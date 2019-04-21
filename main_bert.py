@@ -137,11 +137,10 @@ with open('../mapping.pickle', 'rb') as handle:
     mapping = pickle.load(handle)
 
 
-with open('../train_english.pickle', 'rb') as handle:
-    train = pickle.load(handle)
+train = pickle.load(open("train_english.pickle", "rb"))
 
-
-with open('../test_english.pickle', 'rb') as handle:
+test = pickle.load(open("test_english.pickle", "rb"))
+with open('test_english.pickle', 'rb') as handle:
     test = pickle.load(handle)
 
 
@@ -165,7 +164,7 @@ def model_fn_builder(bert_config, init_checkpoint, layer_indexes, use_tpu,
     input_type_ids = features["input_type_ids"]
     model = modeling.BertModel(
         config=bert_config,
-        is_training=False,
+        is_training=True,
         input_ids=input_ids,
         input_mask=input_mask,
         token_type_ids=input_type_ids,
@@ -313,7 +312,7 @@ for feature in features:
 
 
 LAYERS = [-1,-2,-3,-4]
-bert_config_file = "bert_file/bert_config.json"
+bert_config_file = "../bert_file/bert_config.json"
 bert_config = modeling.BertConfig.from_json_file(bert_config_file)
 num_tpu_cores=8
 master= None
@@ -358,50 +357,51 @@ count = 0
 file_names = []
 curr =  ""
 map = {}
-for result in estimator.predict(input_fn, yield_single_examples=True):
-    count
-    count +=1
-    unique_id = int(result["unique_id"])
-    feature = unique_id_to_feature[unique_id]
-    file_name = feature.filename 
-    if file_name not in file_names:
-        if curr != "" :
+def try_hey():
+    for result in estimator.predict(input_fn, yield_single_examples=True):
+        count
+        count +=1
+        unique_id = int(result["unique_id"])
+        feature = unique_id_to_feature[unique_id]
+        file_name = feature.filename 
+        if file_name not in file_names:
+            if curr != "" :
+                i = file_name_to_index[curr]
+                name = 'bert_test_files/%s' %(str(i))
+                with open(name, 'wb') as f:
+                    pickle.dump(map, f, pickle.HIGHEST_PROTOCOL)
+            map ={}
+            file_names += [file_name]
+        elif curr != file_name and curr != "":
             i = file_name_to_index[curr]
             name = 'bert_test_files/%s' %(str(i))
             with open(name, 'wb') as f:
                 pickle.dump(map, f, pickle.HIGHEST_PROTOCOL)
-        map ={}
-        file_names += [file_name]
-    elif curr != file_name and curr != "":
-        i = file_name_to_index[curr]
-        name = 'bert_test_files/%s' %(str(i))
-        with open(name, 'wb') as f:
-            pickle.dump(map, f, pickle.HIGHEST_PROTOCOL)
-        i = file_name_to_index[file_name]
-        name = 'bert_test_files/%s' %(str(i))
-        with open(name, 'rb') as handle:
-           map = pickle.load(handle)
-    start , end  = feature.index
-    for (i, token) in enumerate(feature.tokens):
-        if token == "[SEP]" or token == "[CLS]":
-            continue
-        index = start+i -1
-        all_layers = []
-        for (j, layer_index) in enumerate(LAYERS):
-            layer_output = result["layer_output_%d" % j]
-            layers = collections.OrderedDict()
-            layers["index"] = layer_index
-            layers["values"] = np.array([round(float(x), 6) for x in layer_output[i:(i + 1)].flat])
-            all_layers.append(layers)
-        if index not in map:
-            map[index] = [token , all_layers, 1]
-        else:         
-            map[index][1][0]["values"]  += all_layers[0]["values"] 
-            map[index][1][1]["values"]  += all_layers[1]["values"] 
-            map[index][1][2]["values"]  += all_layers[2]["values"] 
-            map[index][1][3]["values"]  += all_layers[3]["values"] 
-            map[index][2] += 1
-    curr = file_name
+            i = file_name_to_index[file_name]
+            name = 'bert_test_files/%s' %(str(i))
+            with open(name, 'rb') as handle:
+               map = pickle.load(handle)
+        start , end  = feature.index
+        for (i, token) in enumerate(feature.tokens):
+            if token == "[SEP]" or token == "[CLS]":
+                continue
+            index = start+i -1
+            all_layers = []
+            for (j, layer_index) in enumerate(LAYERS):
+                layer_output = result["layer_output_%d" % j]
+                layers = collections.OrderedDict()
+                layers["index"] = layer_index
+                layers["values"] = np.array([round(float(x), 6) for x in layer_output[i:(i + 1)].flat])
+                all_layers.append(layers)
+            if index not in map:
+                map[index] = [token , all_layers, 1]
+            else:         
+                map[index][1][0]["values"]  += all_layers[0]["values"] 
+                map[index][1][1]["values"]  += all_layers[1]["values"] 
+                map[index][1][2]["values"]  += all_layers[2]["values"] 
+                map[index][1][3]["values"]  += all_layers[3]["values"] 
+                map[index][2] += 1
+        curr = file_name
 
 
 i = file_name_to_index[curr]
@@ -416,7 +416,6 @@ for i in range(len(train)):
     i
     file_name=  train[i]["doc_key"]
     file_name_to_index[file_name] = i
-
 
 
 with h5py.File("bert_cache_train.hdf5", "w") as out_file:
