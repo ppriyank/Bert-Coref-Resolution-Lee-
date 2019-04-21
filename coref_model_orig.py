@@ -25,7 +25,7 @@ class CorefModel(object):
 
     def model_fn_builder(bert_config, init_checkpoint, layer_indexes, use_tpu,
                          use_one_hot_embeddings):
-        def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
+        def model_fn(features, mode):  # pylint: disable=unused-argument
             unique_ids = features["unique_ids"]
             input_ids = features["input_ids"]
             input_mask = features["input_mask"]
@@ -83,7 +83,7 @@ class CorefModel(object):
     use_one_hot_embeddings = False
     init_checkpoint=  "bert_file/bert_model.ckpt"
     is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
-
+    self.model_function = 
     self.input_fn = input_fn_builder(features=features, seq_length=max_seq_length)
     run_config = tf.contrib.tpu.RunConfig(
           master=master,
@@ -92,23 +92,13 @@ class CorefModel(object):
               per_host_input_for_training=is_per_host))
 
 
-
-    model_fn = model_fn_builder(
+    self.model_fn = model_fn_builder(
           bert_config=bert_config,
           init_checkpoint=init_checkpoint,
           layer_indexes=LAYERS,
           use_tpu=use_tpu,
           use_one_hot_embeddings=use_one_hot_embeddings)
 
-
-    self.estimator = tf.contrib.tpu.TPUEstimator(
-          use_tpu=use_tpu,
-          model_fn=model_fn,
-          config=run_config,
-          predict_batch_size=batch_size)
-
-    self.train_file = h5py.File(config["bert_train"], "r") 
-    self.test_file = h5py.File(config["bert_test"], "r") 
 
     # self.char_embedding_size = config["char_embedding_size"]
     # self.char_dict = util.load_char_dict(config["char_vocab_path"])
@@ -218,13 +208,13 @@ class CorefModel(object):
   def tensorize_example(self, example, is_training):
     clusters = example["clusters"]
     file_name = example["doc_key"]
+    import pdb; pdb.set_trace()
     if is_training:
       #embedding = self.train_file[file_name]
-      embedding = self.estimator.predict(example)
-      embedding = self.train_file[file_name]["embd"][...]
+      embedding = self.model_function(example, tf.estimator.ModeKeys.PREDICT)
     else:
       #embedding = self.test_file[file_name]
-      embedding = self.test_file[file_name]["embd"][...]
+      embedding = self.model_function(example, tf.estimator.ModeKeys.PREDICT)
     # context_embeddings = tf.reduce_mean(example["embedding"] ,2) 
     gold_mentions = sorted(tuple(m) for m in util.flatten(clusters))
     gold_mention_map = {m:i for i,m in enumerate(gold_mentions)}
