@@ -2,14 +2,17 @@
 import numpy as np
 import tensorflow as tf
 import tensorflow_hub as hub
+import bert
+import pickle
 import h5py
 import json
 import sys
 sys.path.append("../..")
 import os
-import run_classifier
-import tokenization
-
+from bert import run_classifier
+from bert import tokenization
+from bert import modeling
+import collections
 
 def create_tokenizer_from_hub_module(bert_hub_module_handle,   sess):
     bert_module = hub.Module(bert_hub_module_handle)
@@ -24,7 +27,7 @@ def create_tokenizer_from_hub_module(bert_hub_module_handle,   sess):
 BERT_MODEL_HUB = "https://tfhub.dev/google/bert_uncased_L-12_H-768_A-12/1"
 
 
-args = ["../../../dataset/train.english.jsonlines" , "../../../dataset/dev.english.jsonlines"]
+args = ["train.english.jsonlines" , "dev.english.jsonlines"]
 json_filename = args[1]
 data_path = json_filename
 
@@ -127,8 +130,6 @@ for i in range(len(gold_mentions)):
 ##################################################################################################################################################################
 
 
-
-import pickle
 with open('mapping.pickle', 'rb') as handle:
     mapping = pickle.load(handle)
 
@@ -238,9 +239,7 @@ def input_fn_builder(features, seq_length):
     d = d.batch(batch_size=batch_size, drop_remainder=False)
     return d
   return input_fn
-  
 
-import modeling
 # creating bert embedding 
 seq_length = 502
 sentences_index = {}
@@ -350,7 +349,6 @@ estimator = tf.contrib.tpu.TPUEstimator(
       predict_batch_size=batch_size)
 
 
-import collections
 max_seq_length = 502
 compiled = []
 
