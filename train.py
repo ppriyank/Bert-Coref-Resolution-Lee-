@@ -7,7 +7,7 @@ import os
 import time
 
 import tensorflow as tf
-import coref_model as cm
+import coref_model_orig as cm
 import util
 
 if __name__ == "__main__":
