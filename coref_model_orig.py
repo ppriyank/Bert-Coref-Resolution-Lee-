@@ -83,14 +83,6 @@ class CorefModel(object):
     use_one_hot_embeddings = False
     init_checkpoint=  "bert_file/bert_model.ckpt"
     is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
-    self.model_function = 
-    self.input_fn = input_fn_builder(features=features, seq_length=max_seq_length)
-    run_config = tf.contrib.tpu.RunConfig(
-          master=master,
-          tpu_config=tf.contrib.tpu.TPUConfig(
-              num_shards=num_tpu_cores,
-              per_host_input_for_training=is_per_host))
-
 
     self.model_fn = model_fn_builder(
           bert_config=bert_config,
