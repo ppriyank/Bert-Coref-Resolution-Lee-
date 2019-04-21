@@ -1,3 +1,6 @@
+import os
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"  # specify which GPU(s) to be used
 
 import numpy as np
 import tensorflow as tf
@@ -129,20 +132,21 @@ for i in range(len(gold_mentions)):
 
 
 import pickle
-with open('mapping.pickle', 'rb') as handle:
+with open('../mapping.pickle', 'rb') as handle:
     mapping = pickle.load(handle)
 
 
-with open('train_english.pickle', 'rb') as handle:
+with open('../train_english.pickle', 'rb') as handle:
     train = pickle.load(handle)
 
 
-with open('test_english.pickle', 'rb') as handle:
+with open('../test_english.pickle', 'rb') as handle:
     test = pickle.load(handle)
 
 
 class InputFeatures(object):
-  def __init__(self, index, unique_id, tokens, input_ids, input_mask, input_type_ids):
+  def __init__(self, filename, index, unique_id, tokens, input_ids, input_mask, input_type_ids):
+    self.filename = filename
     self.index = index
     self.unique_id = unique_id
     self.tokens = tokens
@@ -241,46 +245,37 @@ def input_fn_builder(features, seq_length):
   
 
 import modeling
-# creating bert embedding 
 seq_length = 502
-sentences_index = {}
 max_seq_length = 502    
-total_length = []
-# total_sentence_count  = []
-# total_length_sentence  = []
-features = {}
-file_names = []
+sentences_index = {}
+features = []
+unique_id_to_feature ={}
+unique_id = 0
+file_name_to_index ={}
+
+# train = test 
 for i in range(len(train)):
-    unique_id = 0
+    i
+    if i < 2800:
+        continue 
     sentences  = train[i]['sentences']
     file_name=  train[i]["doc_key"]
-    file_names += [file_name]
+    # file_names += [file_name]
+    file_name_to_index[file_name] = i
     start = 0 
-    # bert_tokenized = []
-    sentences_index[file_name] = []
+    bert_tokenized = []
+    # sentences_index[file_name] = []
+    # start_end_id[file_name] = {}
     for i in range(len(sentences)):
-        # total_length_sentence.append(len(sentences[i]))
         bert_tokenized += sentences[i]
-        end = start + len(sentences[i])-1
-        sentences_index[file_name] += [(start,end)]
-        # bert_tokenized[start:end+1] , sentences[i]
-        start = start + len(sentences[i])
-    # total_length.append(len(bert_tokenized))
-    # total_sentence_count.append(len(sentences_index[file_name]))
+        # end = start + len(sentences[i])-1
+        # sentences_index[file_name] += [(start,end)]
+        # start = start + len(sentences[i])
     start =0 
     end = 500 
     end = min(end, len(bert_tokenized))
-    features[file_name] = []
     while (end <= len(bert_tokenized)) :
         tokens_a = bert_tokenized[start:end]
-        tokens_a
-        start += 100
-        if end == len(bert_tokenized) : 
-            end += 100
-        else:
-            end += 100
-            end = min(end, len(bert_tokenized))
-        # len(tokens_a)
         tokens = []
         input_type_ids = []
         tokens.append("[CLS]")
@@ -296,23 +291,26 @@ for i in range(len(train)):
             input_ids.append(0)
             input_mask.append(0)
             input_type_ids.append(0)
-        features[file_name].append(
+        features.append(
             InputFeatures(
+                filename=file_name ,
                 index = [start,end],
                 unique_id=unique_id,
                 tokens=tokens,
                 input_ids=input_ids,
                 input_mask=input_mask,
                 input_type_ids=input_type_ids))
+        unique_id +=1
         start += 100
         if end == len(bert_tokenized) : 
             end += 100
         else:
             end += 100
             end = min(end, len(bert_tokenized))
-        
+    
 
-
+for feature in features:
+        unique_id_to_feature[feature.unique_id] = feature
 
 
 LAYERS = [-1,-2,-3,-4]
@@ -350,55 +348,217 @@ estimator = tf.contrib.tpu.TPUEstimator(
       predict_batch_size=batch_size)
 
 
+input_fn = input_fn_builder(features=features, seq_length=max_seq_length)
+
+
 import collections
-max_seq_length = 502
-compiled = []
+import numpy as np
+len(features)
+count = 0 
+# with open('data.json', 'w') as fp:
+file_names = []
+curr =  ""
+map = {}
+for result in estimator.predict(input_fn, yield_single_examples=True):
+    count
+    count +=1
+    unique_id = int(result["unique_id"])
+    feature = unique_id_to_feature[unique_id]
+    file_name = feature.filename 
+    if file_name not in file_names:
+        if curr != "" :
+            i = file_name_to_index[curr]
+            name = 'bert_test_files/%s' %(str(i))
+            with open(name, 'wb') as f:
+                pickle.dump(map, f, pickle.HIGHEST_PROTOCOL)
+        map ={}
+        file_names += [file_name]
+    elif curr != file_name and curr != "":
+        i = file_name_to_index[curr]
+        name = 'bert_test_files/%s' %(str(i))
+        with open(name, 'wb') as f:
+            pickle.dump(map, f, pickle.HIGHEST_PROTOCOL)
+        i = file_name_to_index[file_name]
+        name = 'bert_test_files/%s' %(str(i))
+        with open(name, 'rb') as handle:
+           map = pickle.load(handle)
+    start , end  = feature.index
+    for (i, token) in enumerate(feature.tokens):
+        if token == "[SEP]" or token == "[CLS]":
+            continue
+        index = start+i -1
+        all_layers = []
+        for (j, layer_index) in enumerate(LAYERS):
+            layer_output = result["layer_output_%d" % j]
+            layers = collections.OrderedDict()
+            layers["index"] = layer_index
+            layers["values"] = np.array([round(float(x), 6) for x in layer_output[i:(i + 1)].flat])
+            all_layers.append(layers)
+        if index not in map:
+            map[index] = [token , all_layers, 1]
+        else:         
+            map[index][1][0]["values"]  += all_layers[0]["values"] 
+            map[index][1][1]["values"]  += all_layers[1]["values"] 
+            map[index][1][2]["values"]  += all_layers[2]["values"] 
+            map[index][1][3]["values"]  += all_layers[3]["values"] 
+            map[index][2] += 1
+    curr = file_name
+
+
+i = file_name_to_index[curr]
+name = 'bert_test_files/%s' %(str(i))
+with open(name, 'wb') as f:
+            pickle.dump(map, f, pickle.HIGHEST_PROTOCOL)
+
+
+
+file_name_to_index = {}
+for i in range(len(train)):
+    i
+    file_name=  train[i]["doc_key"]
+    file_name_to_index[file_name] = i
+
+
+
+with h5py.File("bert_cache_train.hdf5", "w") as out_file:
+    for i in range(len(train)):
+        i
+        name = 'bert_train_files/%s' %(str(i))
+        with open(name, 'rb') as handle:
+               map = pickle.load(handle)
+        file_name = train[i]["doc_key"]
+        group = out_file.create_group(file_name)
+        for index in map:
+            temp = map[index]
+            bert_embd = np.stack([ np.array(temp[1][0]["values"]) /  temp[2]  , np.array(temp[1][1]["values"]) /  temp[2] ,
+                np.array(temp[1][2]["values"]) /  temp[2] , np.array(temp[1][3]["values"]) / temp[2] ],1)
+            group[str(index)] = bert_embd
+
+
+
+
+with h5py.File("bert_cache_test.hdf5", "w") as out_file:
+    for i in range(len(test)):
+        i
+        name = 'bert_test_files/%s' %(str(i))
+        with open(name, 'rb') as handle:
+               map = pickle.load(handle)
+        file_name = test[i]["doc_key"]
+        group = out_file.create_group(file_name)
+        for index in map:
+            temp = map[index]
+            bert_embd = np.stack([ np.array(temp[1][0]["values"]) /  temp[2]  , np.array(temp[1][1]["values"]) /  temp[2] ,
+                np.array(temp[1][2]["values"]) /  temp[2] , np.array(temp[1][3]["values"]) / temp[2] ],1)
+            bert_embd.shape 
+            group[str(index)] = bert_embd
+
+            
+
+
+with h5py.File("bert_cache.hdf5", "w") as out_file:
+    for i in range(len(train)):
+        sentences = train[i]["sentences"]
+        file_name = train[i]["doc_key"]
+        max_sentence_length = max(len(s) for s in sentences)
+        context_word_emb = np.zeros([len(sentences), max_sentence_length, 1024 , 4])    
+        embedding =  compiled[i]["embedding"]
+        group = out_file.create_group(file_name)
+        for i in range(len(sentences)):
+            if i ==0 :
+                temp = 0
+            else:
+                temp += len(sentences[i-1])
+            for j in range(len(sentences[i])):
+                index  = temp + j
+                context_word_emb[i][j] = np.array(embedding[index])
+        group["embedding"] =  context_word_emb
+
+
 
 for k in range(len(train)):
-    file_name=  train[k]["doc_key"]
-    curr= features[file_name]
-    all_features = {}
-    for j in curr: 
-        start = j.index[0]
-        end  = j.index[1]
-        # start, end 
-        input_fn = input_fn_builder(
-            features=[j], seq_length=max_seq_length)
-        for result in estimator.predict(input_fn, yield_single_examples=True):
-            for (i, token) in enumerate(j.tokens):
-                if token == "[SEP]" or token == "[CLS]":
-                    continue
-                index = start+i -1
-                # index , token
-                all_layers = []
-                for (j, layer_index) in enumerate(LAYERS):
-                    layer_output = result["layer_output_%d" % j]
-                    layers = collections.OrderedDict()
-                    layers["index"] = layer_index
-                    layers["values"] = [round(float(x), 6) for x in layer_output[i:(i + 1)].flat]
-                    all_layers.append(layers)
-                if index not in map:
-                    map[index] = [token , all_layers, 1]
-                else:         
-                    map[index][1][0]["values"]  += all_layers[0]["values"] 
-                    map[index][1][1]["values"]  += all_layers[1]["values"] 
-                    map[index][1][2]["values"]  += all_layers[2]["values"] 
-                    map[index][1][3]["values"]  += all_layers[3]["values"] 
-                    map[index][2] += 1
-    for index in map:
-        token = map[index][0]
-        bert_embd = tf.stack([ np.array(map[index][1][0]["values"]) /  map[index][2] , np.array(map[index][1][1]["values"]) /  map[index][2] ,
-         np.array(map[index][1][2]["values"]) /  map[index][2] , np.array(map[index][1][3]["values"]) /  map[index][2] ] , -1)
-        all_features[index] = [ token , bert_embd ]
-    compiled.append({})
-    compiled[k]["sentences"] = train[k]["sentences"]
-    compiled[k]['doc_key'] = train[k]['doc_key']
-    file_name = train[i]['doc_key']
-    compiled[k]['sent_index'] = sentences_index[file_name] 
-    compiled[k]['clusters'] = train[k]['clusters']
-    compiled[k]['embedding'] = all_features
+        k
+        sentences = train[k]["sentences"]
+        file_name = train[k]["doc_key"]
+        embedding = file[file_name]
+        for i in range(len(sentences)):
+            if i ==0 :
+                temp = 0
+            else:
+                temp += len(sentences[i-1])
+            for j in range(len(sentences[i])):
+                index  = temp + j
+                if embedding[str(index)][...].shape != (1024,4):
+                    break 
 
 
 
-with open('train_bert.pickle', 'wb') as handle:
-    pickle.dump(compiled, handle, protocol=pickle.HIGHEST_PROTOCOL)
+file = h5py.File("bert_cache_train.hdf5", "r")
+
+
+
+
+
+
+
+
+
+
+import pickle
+with open('files/mapping.pickle', 'rb') as handle:
+    mapping = pickle.load(handle)
+
+
+with open('../dataset/train.english.jsonlines') as f:
+    train_examples = [json.loads(jsonline) for jsonline in f.readlines()]
+
+with open('files/train_english.pickle', 'rb') as handle:
+    train = pickle.load(handle)
+
+
+
+with open('../dataset/dev.english.jsonlines') as f:
+    test_examples = [json.loads(jsonline) for jsonline in f.readlines()]
+
+
+with open('files/test_english.pickle', 'rb') as handle:
+    test = pickle.load(handle)
+
+
+test_examples = train_examples
+test = train 
+inv_mapping ={}
+for i  in range(len(test_examples)):
+    t = {}
+    file_name =  test_examples[i]["doc_key"]
+    s1 = test_examples[i]["sentences"]
+    s2 = test[i]["sentences"]
+    tokenized = []
+    bert_tokenized  = []
+    for s  in s1:
+        tokenized += s
+    for s  in s2:
+        bert_tokenized += s
+    j = 0 
+    for i in range (len(tokenized)):
+        # tokenized[i]
+        count = mapping[tokenized[i]][1] 
+        # count
+        for k in range(count):
+            t[j] = i 
+            j = j + 1 
+    inv_mapping[file_name] = t
+
+
+
+with open('train_inv_mapping.pickle', 'wb') as handle:
+    pickle.dump(inv_mapping, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+with open('files/test_inv_mapping.pickle', 'wb') as handle:
+    pickle.dump(inv_mapping, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        
+for key in inv_mapping[file_name]:
+    bert_tokenized[key], tokenized[inv_mapping[file_name][key]]
+
+
