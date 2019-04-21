@@ -83,14 +83,6 @@ class CorefModel(object):
     use_one_hot_embeddings = False
     init_checkpoint=  "bert_file/bert_model.ckpt"
     is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
-    self.model_function = 
-    self.input_fn = input_fn_builder(features=features, seq_length=max_seq_length)
-    run_config = tf.contrib.tpu.RunConfig(
-          master=master,
-          tpu_config=tf.contrib.tpu.TPUConfig(
-              num_shards=num_tpu_cores,
-              per_host_input_for_training=is_per_host))
-
 
     self.model_fn = model_fn_builder(
           bert_config=bert_config,
@@ -211,10 +203,10 @@ class CorefModel(object):
     import pdb; pdb.set_trace()
     if is_training:
       #embedding = self.train_file[file_name]
-      embedding = self.model_function(example, tf.estimator.ModeKeys.PREDICT)
+      embedding = self.model_fn(example, tf.estimator.ModeKeys.PREDICT)
     else:
       #embedding = self.test_file[file_name]
-      embedding = self.model_function(example, tf.estimator.ModeKeys.PREDICT)
+      embedding = self.model_fn(example, tf.estimator.ModeKeys.PREDICT)
     # context_embeddings = tf.reduce_mean(example["embedding"] ,2) 
     gold_mentions = sorted(tuple(m) for m in util.flatten(clusters))
     gold_mention_map = {m:i for i,m in enumerate(gold_mentions)}
