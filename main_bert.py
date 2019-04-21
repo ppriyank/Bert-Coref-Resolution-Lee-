@@ -10,9 +10,12 @@ import json
 import sys
 sys.path.append("../..")
 import os
-import run_classifier
-import tokenization
+import pickle
 
+import bert
+
+from bert import run_classifier
+from bert import tokenization
 
 def create_tokenizer_from_hub_module(bert_hub_module_handle,   sess):
     bert_module = hub.Module(bert_hub_module_handle)
@@ -27,7 +30,7 @@ def create_tokenizer_from_hub_module(bert_hub_module_handle,   sess):
 BERT_MODEL_HUB = "https://tfhub.dev/google/bert_uncased_L-12_H-768_A-12/1"
 
 
-args = ["../../../dataset/train.english.jsonlines" , "../../../dataset/dev.english.jsonlines"]
+args = ["train.english.jsonlines" , "dev.english.jsonlines"]
 json_filename = args[1]
 data_path = json_filename
 
@@ -131,7 +134,6 @@ for i in range(len(gold_mentions)):
 
 
 
-import pickle
 with open('../mapping.pickle', 'rb') as handle:
     mapping = pickle.load(handle)
 
