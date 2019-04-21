@@ -11,7 +11,7 @@ import coref_model_orig as cm
 import util
 
 if __name__ == "__main__":
-  config = util.initialize_from_env()
+  config = util.initialize_from_env("experiments.conf")
 
   report_frequency = config["report_frequency"]
   eval_frequency = config["eval_frequency"]

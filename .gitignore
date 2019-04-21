@@ -1,1 +1,5 @@
 bert_file/*
+*.jsonlines
+*.pickle
+dev.*
+*.txt
