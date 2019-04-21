@@ -79,6 +79,12 @@ class CorefModel(object):
       while True:
         random.shuffle(train_examples)
         for example in train_examples:
+          file_name =  example["doc_key"]
+          if example["doc_key"]  == "bn/cnn/04/cnn_0418_0" or example["doc_key"]  == "nw/wsj/04/wsj_0465_0" or file_name == 'nw/wsj/07/wsj_0725_0' or  file_name == 'nw/wsj/10/wsj_1057_0' or file_name  == 'nw/wsj/11/wsj_1146_0' or file_name == 'nw/wsj/12/wsj_1267_0' or  \
+  file_name  ==  'nw/wsj/13/wsj_1302_0'  or file_name == 'nw/wsj/15/wsj_1567_0' or  file_name  ==  'nw/wsj/15/wsj_1574_0'  or file_name ==  'nw/wsj/18/wsj_1875_0' \
+  or file_name  ==   'nw/wsj/20/wsj_2013_0'  :
+            continue
+
           tensorized_example = self.tensorize_example(example, is_training=True)
           feed_dict = dict(zip(self.queue_input_tensors, tensorized_example))
           session.run(self.enqueue_op, feed_dict=feed_dict)
@@ -127,9 +133,11 @@ class CorefModel(object):
     clusters = example["clusters"]
     file_name = example["doc_key"]
     if is_training:
-      embedding = self.train_file[file_name]
+      #embedding = self.train_file[file_name]
+      embedding = self.train_file[file_name]["embd"][...]
     else:
-      embedding = self.test_file[file_name]
+      #embedding = self.test_file[file_name]
+      embedding = self.test_file[file_name]["embd"][...]
     # context_embeddings = tf.reduce_mean(example["embedding"] ,2) 
     gold_mentions = sorted(tuple(m) for m in util.flatten(clusters))
     gold_mention_map = {m:i for i,m in enumerate(gold_mentions)}
@@ -148,8 +156,12 @@ class CorefModel(object):
     context_word_emb = np.zeros([len(sentences), max_sentence_length, 1024])
     head_word_emb = np.zeros([len(sentences), max_sentence_length, 1024])
     lm_emb = np.zeros([len(sentences), max_sentence_length, 1024 , 4 ])
+    #head_word_emb = np.average(embedding,2)
+    #context_word_emb  = np.average(embedding,2)
+    #lm_emb  = embedding
     # char_index = np.zeros([len(sentences), max_sentence_length, max_word_length])
-    temp =0 
+    temp =0
+    ''' 
     for i, sentence in enumerate(sentences):
       if i ==0 :
         temp = 0
@@ -161,7 +173,23 @@ class CorefModel(object):
         context_word_emb[i, j] = np.average(embedding[str(index)][...],1)
         head_word_emb[i, j] = np.average(embedding[str(index)][...],1)
         lm_emb[i,j] = embedding[str(index)][...]
+    
+    for i, sentence in enumerate(sentences):
+       for j, word in enumerate(sentence):
+           tokens[i][j] = word
     #     char_index[i, j, :len(word)] = [self.char_dict[c] for c in word]
+    '''
+    for i, sentence in enumerate(sentences):
+      if i ==0 :
+        temp = 0
+      else:
+        temp += len(sentences[i-1])
+      for j, word in enumerate(sentence):
+        index = temp + j
+        tokens[i][j] = word
+        context_word_emb[i, j] = np.average(embedding[index],1)
+        head_word_emb[i, j] = np.average(embedding[index],1)
+        lm_emb[i,j] = embedding[index]
     tokens = np.array(tokens)
     # speaker_dict = { s:i for i,s in enumerate(set(speakers)) }
     # speaker_ids = np.array([speaker_dict[s] for s in speakers])
