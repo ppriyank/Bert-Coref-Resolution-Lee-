@@ -203,10 +203,10 @@ class CorefModel(object):
     import pdb; pdb.set_trace()
     if is_training:
       #embedding = self.train_file[file_name]
-      embedding = self.model_function(example, tf.estimator.ModeKeys.PREDICT)
+      embedding = self.model_fn(example, tf.estimator.ModeKeys.PREDICT)
     else:
       #embedding = self.test_file[file_name]
-      embedding = self.model_function(example, tf.estimator.ModeKeys.PREDICT)
+      embedding = self.model_fn(example, tf.estimator.ModeKeys.PREDICT)
     # context_embeddings = tf.reduce_mean(example["embedding"] ,2) 
     gold_mentions = sorted(tuple(m) for m in util.flatten(clusters))
     gold_mention_map = {m:i for i,m in enumerate(gold_mentions)}
