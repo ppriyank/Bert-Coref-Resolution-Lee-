@@ -19,79 +19,13 @@ import coref_ops
 import conll
 import metrics
 
-import bert 
-from bert import modeling
 
-def model_fn_builder(bert_config, init_checkpoint, layer_indexes, use_tpu,
-                     use_one_hot_embeddings):
-    def model_fn(features, mode):  # pylint: disable=unused-argument
-        unique_ids = features["unique_ids"]
-        input_ids = features["input_ids"]
-        input_mask = features["input_mask"]
-        input_type_ids = features["input_type_ids"]
-        model = modeling.BertModel(
-            config=bert_config,
-            is_training=True,
-            input_ids=input_ids,
-            input_mask=input_mask,
-            token_type_ids=input_type_ids,
-            use_one_hot_embeddings=use_one_hot_embeddings)
-        if mode != tf.estimator.ModeKeys.PREDICT:
-            raise ValueError("Only PREDICT modes are supported: %s" % (mode))
-        tvars = tf.trainable_variables()
-        scaffold_fn = None
-        (assignment_map,
-         initialized_variable_names) = modeling.get_assignment_map_from_checkpoint(
-             tvars, init_checkpoint)
-        if use_tpu:
-            def tpu_scaffold():
-                tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
-                return tf.train.Scaffold()
-            scaffold_fn = tpu_scaffold
-        else:
-            tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
-        tf.logging.info("**** Trainable Variables ****")
-        for var in tvars:
-            init_string = ""
-            if var.name in initialized_variable_names:
-                init_string = ", *INIT_FROM_CKPT*"
-            tf.logging.info("  name = %s, shape = %s%s", var.name, var.shape,
-                          init_string)
-        all_layers = model.get_all_encoder_layers()
-        predictions = {
-            "unique_id": unique_ids,
-        }
-        for (i, layer_index) in enumerate(layer_indexes):
-            predictions["layer_output_%d" % i] = all_layers[layer_index]
-        output_spec = tf.contrib.tpu.TPUEstimatorSpec(
-            mode=mode, predictions=predictions, scaffold_fn=scaffold_fn)
-        return output_spec
-    return model_fn
+## I just need to know how to run this code. 
 
 class CorefModel(object):
 
     def __init__(self, config):
         self.config = config
-        LAYERS = [-1,-2,-3,-4]
-        bert_config_file = "../bert_file/bert_config.json"
-        bert_config = modeling.BertConfig.from_json_file(bert_config_file)
-        num_tpu_cores=8
-        master= None
-        use_tpu = False
-        batch_size = 32  
-        vocab_file ="bert_file/vocab.txt"
-        use_one_hot_embeddings = False
-        init_checkpoint=  "bert_file/bert_model.ckpt"
-        is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
-
-        self.model_fn = model_fn_builder(
-              bert_config=bert_config,
-              init_checkpoint=init_checkpoint,
-              layer_indexes=LAYERS,
-              use_tpu=use_tpu,
-              use_one_hot_embeddings=use_one_hot_embeddings)
-
-
         # self.char_embedding_size = config["char_embedding_size"]
         # self.char_dict = util.load_char_dict(config["char_vocab_path"])
         self.max_span_width = config["max_span_width"]
@@ -99,11 +33,11 @@ class CorefModel(object):
         # if config["lm_path"]:
         #   self.lm_file = h5py.File(self.config["lm_path"], "r")
         # else:
+        self.train_file = h5py.File(config["bert_train"], "r") 
+        self.test_file = h5py.File(config["bert_test"], "r") 
         self.lm_file = None
         self.lm_layers = self.config["lm_layers"]
         self.lm_size = self.config["lm_size"]
-
-
         self.eval_data = None # Load eval data lazily.
 
         input_props = []
@@ -118,6 +52,18 @@ class CorefModel(object):
         input_props.append((tf.int32, [None])) # Cluster ids.
 
         self.queue_input_tensors = [tf.placeholder(dtype, shape) for dtype, shape in input_props]
+        input_props = []
+        input_props.append((tf.string, [None, None])) # Tokens.
+        input_props.append((tf.float32, [None, None, 1024])) # Context embeddings.
+        input_props.append((tf.float32, [None, None, 1024])) # Head embeddings.
+        input_props.append((tf.float32, [None, None, self.lm_size, self.lm_layers])) # LM embeddings.
+        input_props.append((tf.int32, [None])) # Text lengths.
+        input_props.append((tf.bool, [])) # Is training.
+        input_props.append((tf.int32, [None])) # Gold starts.
+        input_props.append((tf.int32, [None])) # Gold ends.
+        input_props.append((tf.int32, [None])) # Cluster ids.
+
+        self.queue_input_swag_tensors = [tf.placeholder(dtype, shape) for dtype, shape in input_props]
         dtypes, shapes = zip(*input_props)
         queue = tf.PaddingFIFOQueue(capacity=10, dtypes=dtypes, shapes=shapes)
         self.enqueue_op = queue.enqueue(self.queue_input_tensors)
@@ -141,8 +87,8 @@ class CorefModel(object):
     def start_enqueue_thread(self, session):
         with open(self.config["train_path"], 'rb') as handle:
             train_examples = pickle.load(handle)
-    # with open() as f:
-    #   train_examples = [json.loads(jsonline) for jsonline in f.readlines()]
+            train_swag_examples = pickle.load(open("train_full.csv"), "rb")
+
         def _enqueue_loop():
             while True:
                 random.shuffle(train_examples)
@@ -152,9 +98,11 @@ class CorefModel(object):
                 file_name  ==  'nw/wsj/13/wsj_1302_0'  or file_name == 'nw/wsj/15/wsj_1567_0' or  file_name  ==  'nw/wsj/15/wsj_1574_0'  or file_name ==  'nw/wsj/18/wsj_1875_0' \
                 or file_name  ==   'nw/wsj/20/wsj_2013_0' :
                         continue
-                    tensorized_example = self.tensorize_example(example, is_training=True)
+                    example_swag = train_swag_examples.next()
+                    tensorized_example_ont = self.tensorize_example(example, is_training=True)
+                    tensorized_example_ont = self.tensorize_example(example_swag, is_training=True)
                     feed_dict = dict(zip(self.queue_input_tensors, tensorized_example))
-                    session.run(self.enqueue_op, feed_dict=feed_dict)
+                    session.run(self.enqueue_op, feed_dict={"ontonotes":feed_dict_ont, "swag": feed_dict_swag})
         enqueue_thread = threading.Thread(target=_enqueue_loop)
         enqueue_thread.daemon = True
         enqueue_thread.start()
@@ -198,21 +146,12 @@ class CorefModel(object):
 
     def tensorize_example(self, example, is_training):
         clusters = example["clusters"]
-        file_name = example["doc_key"]
+        file_name = example["doc_key"] # get the doc_key for ths. 
+        UNKNOWN_TOK = 102
         if is_training:
-          #embedding = self.train_file[file_name]
-            mapping = pickle.load(open("mapping.pickle", "rb"))
-            sentence = [" ".join(r) for r in example["sentences"]]
-            sentence = " ".join(sentence)
-            sentence = sentence.split(" ")
-            example["input_ids"] = [mapping[r] for r in sentence]
-            example["input_ids"] = list(set([mapping[r] for r in sentence]))
-            example["input_mask"] = tf.ones(shape=[1, len(sentence)], dtype=tf.int32)
-            example["input_type_ids"] = tf.zeros(shape=[1, len(sentence)], dtype=tf.int32)
-            embedding = self.model_fn(example, tf.estimator.ModeKeys.PREDICT)
+            embedding = self.train_file[file_name]["embd"][...]
         else:
-          #embedding = self.test_file[file_name]
-            embedding = self.model_fn(example, tf.estimator.ModeKeys.PREDICT)
+            embedding = self.test_file[file_name]["embd"][...]
         # context_embeddings = tf.reduce_mean(example["embedding"] ,2) 
         gold_mentions = sorted(tuple(m) for m in util.flatten(clusters))
         gold_mention_map = {m:i for i,m in enumerate(gold_mentions)}
