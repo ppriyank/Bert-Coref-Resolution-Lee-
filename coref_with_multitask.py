@@ -180,7 +180,7 @@ class CorefModel(object):
         swag_text_len = np.array([len(s) for s in swag_sentences])
         swag_context_word_emb = np.zeros([len(swag_sentences), 400, 1024]) # maxkword_length is 400
         for i, sentence in enumerate(swag_sentences):
-            for j, word in enumerate(sentence):
+            for j, word in enumerate(sentence[0]):
                 swag_context_word_emb[i, j] = word
 
         temp =0
@@ -197,7 +197,6 @@ class CorefModel(object):
                 lm_emb[i,j] = embedding[index]
         tokens = np.array(tokens)
         gold_starts, gold_ends = self.tensorize_mentions(gold_mentions)
-        # lm_emb = self.load_lm_embeddings(doc_key)
         example_tensors = (tokens, context_word_emb, head_word_emb, lm_emb, text_len, \
             is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb,swag_text_len)
         import pdb; pdb.set_trace()
