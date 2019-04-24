@@ -302,20 +302,21 @@ class CorefModel(object):
             # here, we do the multitask learning here. 
 
             context_outputs = self.lstm_contextualize_multitask(starphrase, gold_ending, distractor_0, distractor_1, distractor_2, distractor_3)# [num_words, emb]
-            # [5, max_sentence_length, emb]
+            # [6, max_sentence_length, emb]
 
+            num_options = tf.shape(context_outputs)[0] - 1
 
             #linear layer with input dimension as [2, max_sentence_length, emb] and output is a score
             weight_multitask_pairwise = tf.get_variable('multitask_pairwise_rep', shape = [2 *tf.shape(context_outputs)[1] * tf.shape(context_outputs)[2], 1])
-            scores = tf.get_variable('multitask_pairwise_score', shape=[4])
+            scores = tf.get_variable('multitask_pairwise_score', shape=[num_options])
             
-            for i in range(4):
+            for i in range(1,num_options+1):
                 pairwise_rep = tf.concat(context_outputs[0], context_outputs[i])
                 pairwise_rep = tf.reshape(pairwise_rep, [-1])
                 scores[i] = tf.matmul(pairwise_rep,weight_multitask_pairwise)
 
             #cross entropy loss for the multitask learning
-            cross_entropy_loss = -tf.log(tf.nn.softmax(scores)[correct_output])
+            cross_entropy_loss = -tf.log(tf.nn.softmax(scores)[0])
 
             return None, cross_entropy_loss
 
