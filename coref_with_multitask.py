@@ -298,7 +298,6 @@ class CorefModel(object):
 
 
         if self.is_multitask:
-            import pdb; pdb.set_trace()
             # here, we do the multitask learning here. 
 
             context_outputs = self.lstm_contextualize_multitask(starphrase, gold_ending, distractor_0, distractor_1, distractor_2, distractor_3)# [num_words, emb]
