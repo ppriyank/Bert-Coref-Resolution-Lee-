@@ -108,9 +108,9 @@ class CorefModel(object):
                 or file_name  ==   'nw/wsj/20/wsj_2013_0' :
                         continue
                     #import pdb; pdb.set_trace()
-                    tensorized_example_ont = self.tensorize_example(example, i, is_training=True)
+                    tensorized_example = self.tensorize_example(example, i, is_training=True)
                     feed_dict = dict(zip(self.queue_input_tensors, tensorized_example))
-                    session.run(self.enqueue_op, feed_dict={"ontonotes":feed_dict_ont, "swag": feed_dict_swag})
+                    session.run(self.enqueue_op, feed_dict=feed_dict)
         enqueue_thread = threading.Thread(target=_enqueue_loop)
         enqueue_thread.daemon = True
         enqueue_thread.start()
@@ -199,7 +199,6 @@ class CorefModel(object):
         gold_starts, gold_ends = self.tensorize_mentions(gold_mentions)
         example_tensors = (tokens, context_word_emb, head_word_emb, lm_emb, text_len, \
             is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb,swag_text_len)
-        import pdb; pdb.set_trace()
         if is_training and len(sentences) > self.config["max_training_sentences"]:
             return self.truncate_example(*example_tensors)
         else:
