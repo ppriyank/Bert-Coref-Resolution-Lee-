@@ -533,9 +533,9 @@ class CorefModel(object):
 
         return self.flatten_emb_by_sentence(text_outputs, text_len_mask)
 
-    def lstm_contextualize_multitask(self, starphrase, gold_ending, distractor_0, distractor_1, distractor_2, distractor_3):
+    def lstm_contextualize_multitask(self, startphrase, gold_ending, distractor_0, distractor_1, distractor_2, distractor_3):
         num_sentences = 1
-        current_inputs_total = [starphrase, gold_ending, distractor_0, distractor_1, distractor_2, distractor_1]# [num_sentences, max_sentence_length, emb]
+        current_inputs_total = [startphrase, gold_ending, distractor_0, distractor_1, distractor_2, distractor_1]# [num_sentences, max_sentence_length, emb]
         result_embs = []
         for i in range(len(current_inputs_total)):
             current_inputs = current_inputs_total[i]
