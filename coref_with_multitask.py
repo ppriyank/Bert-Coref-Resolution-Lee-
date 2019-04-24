@@ -51,12 +51,9 @@ class CorefModel(object):
         input_props.append((tf.int32, [None])) # Gold ends.
         input_props.append((tf.int32, [None])) # Cluster ids.
         # SWAG 
-        input_props.append((tf.float32, [None, None, 1024])) # Start sentence
-        input_props.append((tf.float32, [None, None, 1024])) # Gold embedding
-        input_props.append((tf.float32, [None, None, 1024])) # first distractor
-        input_props.append((tf.float32, [None, None, 1024])) # 2nd 
-        input_props.append((tf.float32, [None, None, 1024])) # 3rd
-        input_props.append((tf.float32, [None, None, 1024])) # 4tth  
+        input_props.append((tf.float32, [None, None, 1024])) # sentence embeddings
+        input_props.append((tf.int32, [None]))  # text length
+
         self.queue_input_tensors = [tf.placeholder(dtype, shape) for dtype, shape in input_props]
         dtypes, shapes = zip(*input_props)
         queue = tf.PaddingFIFOQueue(capacity=10, dtypes=dtypes, shapes=shapes)
@@ -110,7 +107,7 @@ class CorefModel(object):
                 file_name  ==  'nw/wsj/13/wsj_1302_0'  or file_name == 'nw/wsj/15/wsj_1567_0' or  file_name  ==  'nw/wsj/15/wsj_1574_0'  or file_name ==  'nw/wsj/18/wsj_1875_0' \
                 or file_name  ==   'nw/wsj/20/wsj_2013_0' :
                         continue
-                    import pdb; pdb.set_trace()
+                    #import pdb; pdb.set_trace()
                     tensorized_example_ont = self.tensorize_example(example, i, is_training=True)
                     feed_dict = dict(zip(self.queue_input_tensors, tensorized_example))
                     session.run(self.enqueue_op, feed_dict={"ontonotes":feed_dict_ont, "swag": feed_dict_swag})
@@ -141,13 +138,13 @@ class CorefModel(object):
             starts, ends, labels = [], [], []
         return np.array(starts), np.array(ends), np.array([label_dict[c] for c in labels])
 
-    def tensorize_example(self, example,  index, is_training):
+    def tensorize_example(self, example, index, is_training):
         clusters = example["clusters"]
         file_name = example["doc_key"] # get the doc_key for ths. 
         UNKNOWN_TOK = 102
         if is_training:
             embedding = self.train_file[file_name]["embd"][...]
-            swag_embedding = pickle.load(open(self.swag_train_dir+"swag_large_cased_"+str(index)), "rb")
+            swag_embedding = pickle.load(open(self.swag_train_dir+"swag_large_cased_"+str(index), "rb"))
         else:
             embedding = self.test_file[file_name]["embd"][...]
         # context_embeddings = tf.reduce_mean(example["embedding"] ,2) 
@@ -168,12 +165,24 @@ class CorefModel(object):
         context_word_emb = np.zeros([len(sentences), max_sentence_length, 1024])
         head_word_emb = np.zeros([len(sentences), max_sentence_length, 1024])
         lm_emb = np.zeros([len(sentences), max_sentence_length, 1024 , 4 ])
+
         startphrase = swag_embedding["startphrase"]
         gold_ending = swag_embedding["gold-ending"]
-        distractor_0 = swag_embedding["distractor_0"]
-        distractor_1 =  swag_embedding["distractor_1"]
-        distractor_2 =  swag_embedding["distractor_2"]
-        distractor_3 =  swag_embedding["distractor_3"]
+        distractor_0 = swag_embedding["distractor-0"]
+        distractor_1 = swag_embedding["distractor-1"]
+        distractor_2 =  swag_embedding["distractor-2"]
+        distractor_3 =  swag_embedding["distractor-3"]
+
+        swag_sentences = [startphrase, gold_ending, distractor_0, distractor_1, distractor_2, distractor_3]
+        #. len(swag_sentences , N )
+        max_sentence_length_swag = max(len(s) for s in swag_sentences)
+        max_word_length_swag  = max(max(max(len(w) for w in s) for s in swag_sentences), max(self.config["filter_widths"]))
+        swag_text_len = np.array([len(s) for s in swag_sentences])
+        swag_context_word_emb = np.zeros([len(swag_sentences), 400, 1024]) # maxkword_length is 400
+        for i, sentence in enumerate(swag_sentences):
+            for j, word in enumerate(sentence):
+                swag_context_word_emb[i, j] = word
+
         temp =0
         for i, sentence in enumerate(sentences):
             if i ==0 :
@@ -190,8 +199,7 @@ class CorefModel(object):
         gold_starts, gold_ends = self.tensorize_mentions(gold_mentions)
         # lm_emb = self.load_lm_embeddings(doc_key)
         example_tensors = (tokens, context_word_emb, head_word_emb, lm_emb, text_len, \
-            is_training, gold_starts, gold_ends, cluster_ids, starphrase, gold_ending, \
-            distractor_0, distractor_1, distractor_2, distractor_3)
+            is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb,swag_text_len)
         import pdb; pdb.set_trace()
         if is_training and len(sentences) > self.config["max_training_sentences"]:
             return self.truncate_example(*example_tensors)
@@ -199,8 +207,7 @@ class CorefModel(object):
             return example_tensors
 
     def truncate_example(self, tokens, context_word_emb, head_word_emb, lm_emb,  text_len, \
-     is_training, gold_starts, gold_ends, cluster_ids, starphrase, gold_ending, distractor_0, \
-     distractor_1, distractor_2, distractor_3):
+     is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb,swag_text_len):
         max_training_sentences = self.config["max_training_sentences"]
         num_sentences = context_word_emb.shape[0]
         assert num_sentences > max_training_sentences
@@ -222,8 +229,7 @@ class CorefModel(object):
         cluster_ids = cluster_ids[gold_spans]
 
         return tokens, context_word_emb, head_word_emb, lm_emb, text_len,\
-         is_training, gold_starts, gold_ends, cluster_ids, starphrase, gold_ending, distractor_0, \
-         distractor_1, distractor_2, distractor_3
+         is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb, swag_text_len
 
     def get_candidate_labels(self, candidate_starts, candidate_ends, labeled_starts, labeled_ends, labels):
         same_start = tf.equal(tf.expand_dims(labeled_starts, 1), tf.expand_dims(candidate_starts, 0)) # [num_labeled, num_candidates]
@@ -263,8 +269,7 @@ class CorefModel(object):
         return top_antecedents, top_antecedents_mask, top_fast_antecedent_scores, top_antecedent_offsets
 
     def get_predictions_and_loss(self, tokens, context_word_emb, head_word_emb, lm_emb, text_len,\
-         is_training, gold_starts, gold_ends, cluster_ids, starphrase, gold_ending, distractor_0, \
-         distractor_1, distractor_2, distractor_3):
+         is_training, gold_starts, gold_ends, cluster_ids,swag_context_emb, swag_text_len):
         """
         This is the major part of the architecutre, and is the placehlder. 
         We have two branches - one for SWAG, and another for the main Lee code.
@@ -296,23 +301,22 @@ class CorefModel(object):
 
         text_len_mask = tf.sequence_mask(text_len, maxlen=max_sentence_length) # [num_sentence, max_sentence_length]
 
-
         if self.is_multitask:
+            max_sentence_length = tf.shape(swag_context_emb)[1]
             # here, we do the multitask learning here. 
-
-            context_outputs = self.lstm_contextualize_multitask(starphrase, gold_ending, distractor_0, distractor_1, distractor_2, distractor_3)# [num_words, emb]
+            swag_len_mask = tf.sequence_mask(swag_text_len, maxlen=max_sentence_length) 
+            context_outputs = self.lstm_contextualize_multitask(swag_context_emb, swag_text_len, swag_len_mask)# [5, max_sq_len, emb]
             # [6, max_sentence_length, emb]
-
-            num_options = tf.shape(context_outputs)[0] - 1
-
             #linear layer with input dimension as [2, max_sentence_length, emb] and output is a score
-            weight_multitask_pairwise = tf.get_variable('multitask_pairwise_rep', shape = [2 *tf.shape(context_outputs)[1] * tf.shape(context_outputs)[2], 1])
-            scores = tf.get_variable('multitask_pairwise_score', shape=[num_options])
-            
-            for i in range(1,num_options+1):
-                pairwise_rep = tf.concat(context_outputs[0], context_outputs[i])
+            # 400 is global max seq length
+            weight_multitask_pairwise = tf.get_variable('multitask_pairwise_rep', shape = [2 * 400 * 500, 1])
+            scores = []
+            # concatkstart with the ith sentence option.
+            for i in range(1,6):
+                pairwise_rep = tf.concat([context_outputs[0], context_outputs[i]], axis=0)
                 pairwise_rep = tf.reshape(pairwise_rep, [-1])
-                scores[i] = tf.matmul(pairwise_rep,weight_multitask_pairwise)
+                pairwise_rep = tf.expand_dims(pairwise_rep, 0)
+                scores.append(tf.matmul(pairwise_rep,weight_multitask_pairwise))
 
             #cross entropy loss for the multitask learning
             cross_entropy_loss = -tf.log(tf.nn.softmax(scores)[0])
@@ -506,7 +510,7 @@ class CorefModel(object):
     def lstm_contextualize(self, text_emb, text_len, text_len_mask):
 
         current_inputs = text_emb # [num_sentences, max_sentence_length, emb]
-
+        num_sentences = tf.shape(text_emb)[0]
         for layer in range(self.config["contextualization_layers"]):
             with tf.variable_scope("layer_{}".format(layer)):
                 with tf.variable_scope("fw_cell"):
@@ -533,40 +537,35 @@ class CorefModel(object):
 
         return self.flatten_emb_by_sentence(text_outputs, text_len_mask)
 
-    def lstm_contextualize_multitask(self, startphrase, gold_ending, distractor_0, distractor_1, distractor_2, distractor_3):
-        num_sentences = 1
-        current_inputs_total = [startphrase, gold_ending, distractor_0, distractor_1, distractor_2, distractor_1]# [num_sentences, max_sentence_length, emb]
-        result_embs = []
-        for i in range(len(current_inputs_total)):
-            current_inputs = current_inputs_total[i]
-            text_len = np.array([current_inputs.shape[1]])
-            for layer in range(self.config["contextualization_layers"]):
-                with tf.variable_scope("layer_{}".format(layer)):
-                    with tf.variable_scope("fw_cell"):
-                        cell_fw = util.CustomLSTMCell(self.config["contextualization_size"], num_sentences, self.lstm_dropout)
-                    with tf.variable_scope("bw_cell"):
-                        cell_bw = util.CustomLSTMCell(self.config["contextualization_size"], num_sentences, self.lstm_dropout)
-                    state_fw = tf.contrib.rnn.LSTMStateTuple(tf.tile(cell_fw.initial_state.c, [num_sentences, 1]), tf.tile(cell_fw.initial_state.h, [num_sentences, 1]))
-                    state_bw = tf.contrib.rnn.LSTMStateTuple(tf.tile(cell_bw.initial_state.c, [num_sentences, 1]), tf.tile(cell_bw.initial_state.h, [num_sentences, 1]))
+    def lstm_contextualize_multitask(self, text_emb, text_len, text_len_mask):
+        num_sentences = tf.shape(text_emb)[0]
+        current_inputs = text_emb # [num_sentences, max_sentence_length, emb]
 
-                    (fw_outputs, bw_outputs), _ = tf.nn.bidirectional_dynamic_rnn(
-                      cell_fw=cell_fw,
-                      cell_bw=cell_bw,
-                      inputs=current_inputs,
-                      sequence_length= text_len,
-                      initial_state_fw=state_fw,
-                      initial_state_bw=state_bw)
+        for layer in range(self.config["contextualization_layers"]):
+            with tf.variable_scope("layer_{}".format(layer)):
+                with tf.variable_scope("fw_cell"):
+                    cell_fw = util.CustomLSTMCell(self.config["contextualization_size"], num_sentences, self.lstm_dropout)
+                with tf.variable_scope("bw_cell"):
+                    cell_bw = util.CustomLSTMCell(self.config["contextualization_size"], num_sentences, self.lstm_dropout)
+                state_fw = tf.contrib.rnn.LSTMStateTuple(tf.tile(cell_fw.initial_state.c, [num_sentences, 1]), tf.tile(cell_fw.initial_state.h, [num_sentences, 1]))
+                state_bw = tf.contrib.rnn.LSTMStateTuple(tf.tile(cell_bw.initial_state.c, [num_sentences, 1]), tf.tile(cell_bw.initial_state.h, [num_sentences, 1]))
 
-                    text_outputs = tf.concat([fw_outputs, bw_outputs], 2) # [num_sentences, max_sentence_length, emb]
-                    text_outputs = tf.nn.dropout(text_outputs, self.lstm_dropout)
-                    if layer > 0:
-                        highway_gates = tf.sigmoid(util.projection(text_outputs, util.shape(text_outputs, 2))) # [num_sentences, max_sentence_length, emb]
-                        text_outputs = highway_gates * text_outputs + (1 - highway_gates) * current_inputs
-                    current_inputs = text_outputs
-            result_embs.append(current_inputs)
+                (fw_outputs, bw_outputs), _ = tf.nn.bidirectional_dynamic_rnn(
+                  cell_fw=cell_fw,
+                  cell_bw=cell_bw,
+                  inputs=current_inputs,
+                  sequence_length=text_len,
+                  initial_state_fw=state_fw,
+                  initial_state_bw=state_bw)
 
-        return result_embs
+                text_outputs = tf.concat([fw_outputs, bw_outputs], 2) # [num_sentences, max_sentence_length, emb]
+                text_outputs = tf.nn.dropout(text_outputs, self.lstm_dropout)
+                if layer > 0:
+                    highway_gates = tf.sigmoid(util.projection(text_outputs, util.shape(text_outputs, 2))) # [num_sentences, max_sentence_length, emb]
+                    text_outputs = highway_gates * text_outputs + (1 - highway_gates) * current_inputs
+                current_inputs = text_outputs
 
+        return current_inputs
 
 
 

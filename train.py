@@ -39,7 +39,8 @@ if __name__ == "__main__":
     initial_time = time.time()
     
     while True:
-      loss, tf_global_step, _, is_multitask = session.run([model.multitask_loss, model.global_step, model.multitask_train_op, model.is_multitask])
+      is_multitask= True
+      loss, tf_global_step, _  = session.run([model.multitask_loss, model.global_step, model.multitask_train_op])
 
       if is_multitask:
         tf_multitask_loss = loss
