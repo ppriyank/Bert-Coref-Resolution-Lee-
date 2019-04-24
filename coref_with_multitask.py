@@ -19,6 +19,7 @@ import coref_ops
 import conll
 import metrics
 
+
 ## I just need to know how to run this code. 
 
 class CorefModel(object):
@@ -49,39 +50,52 @@ class CorefModel(object):
         input_props.append((tf.int32, [None])) # Gold starts.
         input_props.append((tf.int32, [None])) # Gold ends.
         input_props.append((tf.int32, [None])) # Cluster ids.
-
+        # SWAG 
+        input_props.append((tf.float32, [None, None, 1024])) # Start sentence
+        input_props.append((tf.float32, [None, None, 1024])) # Gold embedding
+        input_props.append((tf.float32, [None, None, 1024])) # first distractor
+        input_props.append((tf.float32, [None, None, 1024])) # 2nd 
+        input_props.append((tf.float32, [None, None, 1024])) # 3rd
+        input_props.append((tf.float32, [None, None, 1024])) # 4tth  
         self.queue_input_tensors = [tf.placeholder(dtype, shape) for dtype, shape in input_props]
-        input_props = []
-        input_props.append((tf.string, [None, None])) # Tokens.
-        input_props.append((tf.float32, [None, None, 1024])) # Context embeddings.
-        input_props.append((tf.float32, [None, None, 1024])) # Head embeddings.
-        input_props.append((tf.float32, [None, None, self.lm_size, self.lm_layers])) # LM embeddings.
-        input_props.append((tf.int32, [None])) # Text lengths.
-        input_props.append((tf.bool, [])) # Is training.
-        input_props.append((tf.int32, [None])) # Gold starts.
-        input_props.append((tf.int32, [None])) # Gold ends.
-        input_props.append((tf.int32, [None])) # Cluster ids.
-
-        self.queue_input_swag_tensors = [tf.placeholder(dtype, shape) for dtype, shape in input_props]
         dtypes, shapes = zip(*input_props)
         queue = tf.PaddingFIFOQueue(capacity=10, dtypes=dtypes, shapes=shapes)
         self.enqueue_op = queue.enqueue(self.queue_input_tensors)
         self.input_tensors = queue.dequeue()
 
-        self.predictions, self.loss = self.get_predictions_and_loss(*self.input_tensors)
-        self.global_step = tf.Variable(0, name="global_step", trainable=False)
-        self.reset_global_step = tf.assign(self.global_step, 0)
-        learning_rate = tf.train.exponential_decay(self.config["learning_rate"], self.global_step,
-                                                   self.config["decay_frequency"], self.config["decay_rate"], staircase=True)
-        trainable_params = tf.trainable_variables()
-        gradients = tf.gradients(self.loss, trainable_params)
-        gradients, _ = tf.clip_by_global_norm(gradients, self.config["max_gradient_norm"])
-        optimizers = {
-          "adam" : tf.train.AdamOptimizer,
-          "sgd" : tf.train.GradientDescentOptimizer
-        }
-        optimizer = optimizers[self.config["optimizer"]](learning_rate)
-        self.train_op = optimizer.apply_gradients(zip(gradients, trainable_params), global_step=self.global_step)
+        self.is_multitask = ??
+
+        if self.is_multitask:
+            #pass correct_output and is_multitask as input to below function
+            _, self.multitask_loss = self.get_predictions_and_loss(*self.input_tensors)
+            self.global_step = tf.Variable(0, name="global_step", trainable=False)
+            self.reset_global_step = tf.assign(self.global_step, 0)
+            learning_rate = tf.train.exponential_decay(self.config["learning_rate"], self.global_step,
+                                                       self.config["decay_frequency"], self.config["decay_rate"], staircase=True)
+            trainable_params = tf.trainable_variables()
+            gradients = tf.gradients(self.multitask_loss, trainable_params)
+            gradients, _ = tf.clip_by_global_norm(gradients, self.config["max_gradient_norm"])
+            optimizers = {
+              "adam" : tf.train.AdamOptimizer,
+              "sgd" : tf.train.GradientDescentOptimizer
+            }
+            optimizer = optimizers[self.config["optimizer"]](learning_rate)
+            self.multitask_train_op = optimizer.apply_gradients(zip(gradients, trainable_params), global_step=self.global_step)
+        else:
+            self.predictions, self.loss = self.get_predictions_and_loss(*self.input_tensors)
+            self.global_step = tf.Variable(0, name="global_step", trainable=False)
+            self.reset_global_step = tf.assign(self.global_step, 0)
+            learning_rate = tf.train.exponential_decay(self.config["learning_rate"], self.global_step,
+                                                       self.config["decay_frequency"], self.config["decay_rate"], staircase=True)
+            trainable_params = tf.trainable_variables()
+            gradients = tf.gradients(self.loss, trainable_params)
+            gradients, _ = tf.clip_by_global_norm(gradients, self.config["max_gradient_norm"])
+            optimizers = {
+              "adam" : tf.train.AdamOptimizer,
+              "sgd" : tf.train.GradientDescentOptimizer
+            }
+            optimizer = optimizers[self.config["optimizer"]](learning_rate)
+            self.train_op = optimizer.apply_gradients(zip(gradients, trainable_params), global_step=self.global_step)
 
     def start_enqueue_thread(self, session):
         with open(self.config["train_path"], 'rb') as handle:
@@ -98,8 +112,7 @@ class CorefModel(object):
                 or file_name  ==   'nw/wsj/20/wsj_2013_0' :
                         continue
                     example_swag = train_swag_examples.next()
-                    tensorized_example_ont = self.tensorize_example(example, is_training=True)
-                    tensorized_example_ont = self.tensorize_example(example_swag, is_training=True)
+                    tensorized_example_ont = self.tensorize_example(example_ontonotes, example_swag, is_training=True)
                     feed_dict = dict(zip(self.queue_input_tensors, tensorized_example))
                     session.run(self.enqueue_op, feed_dict={"ontonotes":feed_dict_ont, "swag": feed_dict_swag})
         enqueue_thread = threading.Thread(target=_enqueue_loop)
@@ -322,81 +335,103 @@ class CorefModel(object):
 
         text_len_mask = tf.sequence_mask(text_len, maxlen=max_sentence_length) # [num_sentence, max_sentence_length]
 
-        context_outputs = self.lstm_contextualize(context_emb, text_len, text_len_mask) # [num_words, emb]
-        num_words = util.shape(context_outputs, 0)
 
-        # genre_emb = tf.gather(tf.get_variable("genre_embeddings", [len(self.genres), self.config["feature_size"]]), genre) # [emb]
-        genre_emb = None
-        sentence_indices = tf.tile(tf.expand_dims(tf.range(num_sentences), 1), [1, max_sentence_length]) # [num_sentences, max_sentence_length]
-        flattened_sentence_indices = self.flatten_emb_by_sentence(sentence_indices, text_len_mask) # [num_words]
-        flattened_head_emb = self.flatten_emb_by_sentence(head_emb, text_len_mask) # [num_words]
+        if self.is_multitask:
+            context_outputs = self.lstm_contextualize_multitask(context_emb, text_len, text_len_mask) # [num_words, emb]
+            # [5, max_sentence_length, emb]
 
-        candidate_starts = tf.tile(tf.expand_dims(tf.range(num_words), 1), [1, self.max_span_width]) # [num_words, max_span_width]
-        candidate_ends = candidate_starts + tf.expand_dims(tf.range(self.max_span_width), 0) # [num_words, max_span_width]
-        candidate_start_sentence_indices = tf.gather(flattened_sentence_indices, candidate_starts) # [num_words, max_span_width]
-        candidate_end_sentence_indices = tf.gather(flattened_sentence_indices, tf.minimum(candidate_ends, num_words - 1)) # [num_words, max_span_width]
-        candidate_mask = tf.logical_and(candidate_ends < num_words, tf.equal(candidate_start_sentence_indices, candidate_end_sentence_indices)) # [num_words, max_span_width]
-        flattened_candidate_mask = tf.reshape(candidate_mask, [-1]) # [num_words * max_span_width]
-        candidate_starts = tf.boolean_mask(tf.reshape(candidate_starts, [-1]), flattened_candidate_mask) # [num_candidates]
-        candidate_ends = tf.boolean_mask(tf.reshape(candidate_ends, [-1]), flattened_candidate_mask) # [num_candidates]
-        candidate_sentence_indices = tf.boolean_mask(tf.reshape(candidate_start_sentence_indices, [-1]), flattened_candidate_mask) # [num_candidates]
 
-        candidate_cluster_ids = self.get_candidate_labels(candidate_starts, candidate_ends, gold_starts, gold_ends, cluster_ids) # [num_candidates]
+            #linear layer with input dimension as [2, max_sentence_length, emb] and output is a score
+            weight_multitask_pairwise = tf.get_variable('multitask_pairwise_rep', shape = [2 *tf.shape(context_outputs)[1] * tf.shape(context_outputs)[2], 1])
+            scores = tf.get_variable('multitask_pairwise_score', shape=[4])
+            
+            for i in range(4):
+                pairwise_rep = tf.concat(context_outputs[0], context_outputs[i])
+                pairwise_rep = tf.reshape(pairwise_rep, [-1])
+                scores[i] = tf.matmul(pairwise_rep,weight_multitask_pairwise)
 
-        candidate_span_emb = self.get_span_emb(flattened_head_emb, context_outputs, candidate_starts, candidate_ends) # [num_candidates, emb]
-        candidate_mention_scores =  self.get_mention_scores(candidate_span_emb) # [k, 1]
-        candidate_mention_scores = tf.squeeze(candidate_mention_scores, 1) # [k]
+            #cross entropy loss for the multitask learning
+            cross_entropy_loss = -tf.log(tf.nn.softmax(scores)[correct_output])
 
-        k = tf.to_int32(tf.floor(tf.to_float(tf.shape(context_outputs)[0]) * self.config["top_span_ratio"]))
-        top_span_indices = coref_ops.extract_spans(tf.expand_dims(candidate_mention_scores, 0),
-                                                   tf.expand_dims(candidate_starts, 0),
-                                                   tf.expand_dims(candidate_ends, 0),
-                                                   tf.expand_dims(k, 0),
-                                                   util.shape(context_outputs, 0),
-                                                   True) # [1, k]
-        top_span_indices.set_shape([1, None])
-        top_span_indices = tf.squeeze(top_span_indices, 0) # [k]
+            return None, cross_entropy_loss
 
-        top_span_starts = tf.gather(candidate_starts, top_span_indices) # [k]
-        top_span_ends = tf.gather(candidate_ends, top_span_indices) # [k]
-        top_span_emb = tf.gather(candidate_span_emb, top_span_indices) # [k, emb]
-        top_span_cluster_ids = tf.gather(candidate_cluster_ids, top_span_indices) # [k]
-        top_span_mention_scores = tf.gather(candidate_mention_scores, top_span_indices) # [k]
-        top_span_sentence_indices = tf.gather(candidate_sentence_indices, top_span_indices) # [k]
-        # top_span_speaker_ids = tf.gather(speaker_ids, top_span_starts) # [k]
-
-        c = tf.minimum(self.config["max_top_antecedents"], k)
-
-        if self.config["coarse_to_fine"]:
-            top_antecedents, top_antecedents_mask, top_fast_antecedent_scores, top_antecedent_offsets = self.coarse_to_fine_pruning(top_span_emb, top_span_mention_scores, c)
         else:
-            top_antecedents, top_antecedents_mask, top_fast_antecedent_scores, top_antecedent_offsets = self.distance_pruning(top_span_emb, top_span_mention_scores, c)
+            context_outputs = self.lstm_contextualize(context_emb, text_len, text_len_mask) # [num_words, emb]
 
-        dummy_scores = tf.zeros([k, 1]) # [k, 1]
-        for i in range(self.config["coref_depth"]):
-            with tf.variable_scope("coref_layer", reuse=(i > 0)):
-                top_antecedent_emb = tf.gather(top_span_emb, top_antecedents) # [k, c, emb]
-                top_antecedent_scores = top_fast_antecedent_scores + self.get_slow_antecedent_scores(top_span_emb, top_antecedents, top_antecedent_emb, top_antecedent_offsets) # [k, c]
-                top_antecedent_weights = tf.nn.softmax(tf.concat([dummy_scores, top_antecedent_scores], 1)) # [k, c + 1]
-                top_antecedent_emb = tf.concat([tf.expand_dims(top_span_emb, 1), top_antecedent_emb], 1) # [k, c + 1, emb]
-                attended_span_emb = tf.reduce_sum(tf.expand_dims(top_antecedent_weights, 2) * top_antecedent_emb, 1) # [k, emb]
-                with tf.variable_scope("f"):
-                    f = tf.sigmoid(util.projection(tf.concat([top_span_emb, attended_span_emb], 1), util.shape(top_span_emb, -1))) # [k, emb]
-                    top_span_emb = f * attended_span_emb + (1 - f) * top_span_emb # [k, emb]
+            num_words = util.shape(context_outputs, 0)
 
-        top_antecedent_scores = tf.concat([dummy_scores, top_antecedent_scores], 1) # [k, c + 1]
+            # genre_emb = tf.gather(tf.get_variable("genre_embeddings", [len(self.genres), self.config["feature_size"]]), genre) # [emb]
+            genre_emb = None
+            sentence_indices = tf.tile(tf.expand_dims(tf.range(num_sentences), 1), [1, max_sentence_length]) # [num_sentences, max_sentence_length]
+            flattened_sentence_indices = self.flatten_emb_by_sentence(sentence_indices, text_len_mask) # [num_words]
+            flattened_head_emb = self.flatten_emb_by_sentence(head_emb, text_len_mask) # [num_words]
 
-        top_antecedent_cluster_ids = tf.gather(top_span_cluster_ids, top_antecedents) # [k, c]
-        top_antecedent_cluster_ids += tf.to_int32(tf.log(tf.to_float(top_antecedents_mask))) # [k, c]
-        same_cluster_indicator = tf.equal(top_antecedent_cluster_ids, tf.expand_dims(top_span_cluster_ids, 1)) # [k, c]
-        non_dummy_indicator = tf.expand_dims(top_span_cluster_ids > 0, 1) # [k, 1]
-        pairwise_labels = tf.logical_and(same_cluster_indicator, non_dummy_indicator) # [k, c]
-        dummy_labels = tf.logical_not(tf.reduce_any(pairwise_labels, 1, keepdims=True)) # [k, 1]
-        top_antecedent_labels = tf.concat([dummy_labels, pairwise_labels], 1) # [k, c + 1]
-        loss = self.softmax_loss(top_antecedent_scores, top_antecedent_labels) # [k]
-        loss = tf.reduce_sum(loss) # []
+            candidate_starts = tf.tile(tf.expand_dims(tf.range(num_words), 1), [1, self.max_span_width]) # [num_words, max_span_width]
+            candidate_ends = candidate_starts + tf.expand_dims(tf.range(self.max_span_width), 0) # [num_words, max_span_width]
+            candidate_start_sentence_indices = tf.gather(flattened_sentence_indices, candidate_starts) # [num_words, max_span_width]
+            candidate_end_sentence_indices = tf.gather(flattened_sentence_indices, tf.minimum(candidate_ends, num_words - 1)) # [num_words, max_span_width]
+            candidate_mask = tf.logical_and(candidate_ends < num_words, tf.equal(candidate_start_sentence_indices, candidate_end_sentence_indices)) # [num_words, max_span_width]
+            flattened_candidate_mask = tf.reshape(candidate_mask, [-1]) # [num_words * max_span_width]
+            candidate_starts = tf.boolean_mask(tf.reshape(candidate_starts, [-1]), flattened_candidate_mask) # [num_candidates]
+            candidate_ends = tf.boolean_mask(tf.reshape(candidate_ends, [-1]), flattened_candidate_mask) # [num_candidates]
+            candidate_sentence_indices = tf.boolean_mask(tf.reshape(candidate_start_sentence_indices, [-1]), flattened_candidate_mask) # [num_candidates]
 
-        return [candidate_starts, candidate_ends, candidate_mention_scores, top_span_starts, top_span_ends, top_antecedents, top_antecedent_scores], loss
+            candidate_cluster_ids = self.get_candidate_labels(candidate_starts, candidate_ends, gold_starts, gold_ends, cluster_ids) # [num_candidates]
+
+            candidate_span_emb = self.get_span_emb(flattened_head_emb, context_outputs, candidate_starts, candidate_ends) # [num_candidates, emb]
+            candidate_mention_scores =  self.get_mention_scores(candidate_span_emb) # [k, 1]
+            candidate_mention_scores = tf.squeeze(candidate_mention_scores, 1) # [k]
+
+            k = tf.to_int32(tf.floor(tf.to_float(tf.shape(context_outputs)[0]) * self.config["top_span_ratio"]))
+            top_span_indices = coref_ops.extract_spans(tf.expand_dims(candidate_mention_scores, 0),
+                                                       tf.expand_dims(candidate_starts, 0),
+                                                       tf.expand_dims(candidate_ends, 0),
+                                                       tf.expand_dims(k, 0),
+                                                       util.shape(context_outputs, 0),
+                                                       True) # [1, k]
+            top_span_indices.set_shape([1, None])
+            top_span_indices = tf.squeeze(top_span_indices, 0) # [k]
+
+            top_span_starts = tf.gather(candidate_starts, top_span_indices) # [k]
+            top_span_ends = tf.gather(candidate_ends, top_span_indices) # [k]
+            top_span_emb = tf.gather(candidate_span_emb, top_span_indices) # [k, emb]
+            top_span_cluster_ids = tf.gather(candidate_cluster_ids, top_span_indices) # [k]
+            top_span_mention_scores = tf.gather(candidate_mention_scores, top_span_indices) # [k]
+            top_span_sentence_indices = tf.gather(candidate_sentence_indices, top_span_indices) # [k]
+            # top_span_speaker_ids = tf.gather(speaker_ids, top_span_starts) # [k]
+
+            c = tf.minimum(self.config["max_top_antecedents"], k)
+
+            if self.config["coarse_to_fine"]:
+                top_antecedents, top_antecedents_mask, top_fast_antecedent_scores, top_antecedent_offsets = self.coarse_to_fine_pruning(top_span_emb, top_span_mention_scores, c)
+            else:
+                top_antecedents, top_antecedents_mask, top_fast_antecedent_scores, top_antecedent_offsets = self.distance_pruning(top_span_emb, top_span_mention_scores, c)
+
+            dummy_scores = tf.zeros([k, 1]) # [k, 1]
+            for i in range(self.config["coref_depth"]):
+                with tf.variable_scope("coref_layer", reuse=(i > 0)):
+                    top_antecedent_emb = tf.gather(top_span_emb, top_antecedents) # [k, c, emb]
+                    top_antecedent_scores = top_fast_antecedent_scores + self.get_slow_antecedent_scores(top_span_emb, top_antecedents, top_antecedent_emb, top_antecedent_offsets) # [k, c]
+                    top_antecedent_weights = tf.nn.softmax(tf.concat([dummy_scores, top_antecedent_scores], 1)) # [k, c + 1]
+                    top_antecedent_emb = tf.concat([tf.expand_dims(top_span_emb, 1), top_antecedent_emb], 1) # [k, c + 1, emb]
+                    attended_span_emb = tf.reduce_sum(tf.expand_dims(top_antecedent_weights, 2) * top_antecedent_emb, 1) # [k, emb]
+                    with tf.variable_scope("f"):
+                        f = tf.sigmoid(util.projection(tf.concat([top_span_emb, attended_span_emb], 1), util.shape(top_span_emb, -1))) # [k, emb]
+                        top_span_emb = f * attended_span_emb + (1 - f) * top_span_emb # [k, emb]
+
+            top_antecedent_scores = tf.concat([dummy_scores, top_antecedent_scores], 1) # [k, c + 1]
+
+            top_antecedent_cluster_ids = tf.gather(top_span_cluster_ids, top_antecedents) # [k, c]
+            top_antecedent_cluster_ids += tf.to_int32(tf.log(tf.to_float(top_antecedents_mask))) # [k, c]
+            same_cluster_indicator = tf.equal(top_antecedent_cluster_ids, tf.expand_dims(top_span_cluster_ids, 1)) # [k, c]
+            non_dummy_indicator = tf.expand_dims(top_span_cluster_ids > 0, 1) # [k, 1]
+            pairwise_labels = tf.logical_and(same_cluster_indicator, non_dummy_indicator) # [k, c]
+            dummy_labels = tf.logical_not(tf.reduce_any(pairwise_labels, 1, keepdims=True)) # [k, 1]
+            top_antecedent_labels = tf.concat([dummy_labels, pairwise_labels], 1) # [k, c + 1]
+            loss = self.softmax_loss(top_antecedent_scores, top_antecedent_labels) # [k]
+            loss = tf.reduce_sum(loss) # []
+
+            return [candidate_starts, candidate_ends, candidate_mention_scores, top_span_starts, top_span_ends, top_antecedents, top_antecedent_scores], loss
 
     def get_span_emb(self, head_emb, context_outputs, span_starts, span_ends):
         span_emb_list = []
@@ -534,6 +569,40 @@ class CorefModel(object):
                 current_inputs = text_outputs
 
         return self.flatten_emb_by_sentence(text_outputs, text_len_mask)
+
+    def lstm_contextualize_multitask(self, text_emb, text_len, text_len_mask):
+        num_sentences = tf.shape(text_emb)[0]
+
+        current_inputs = text_emb # [num_sentences, max_sentence_length, emb]
+
+        for layer in range(self.config["contextualization_layers"]):
+            with tf.variable_scope("layer_{}".format(layer)):
+                with tf.variable_scope("fw_cell"):
+                    cell_fw = util.CustomLSTMCell(self.config["contextualization_size"], num_sentences, self.lstm_dropout)
+                with tf.variable_scope("bw_cell"):
+                    cell_bw = util.CustomLSTMCell(self.config["contextualization_size"], num_sentences, self.lstm_dropout)
+                state_fw = tf.contrib.rnn.LSTMStateTuple(tf.tile(cell_fw.initial_state.c, [num_sentences, 1]), tf.tile(cell_fw.initial_state.h, [num_sentences, 1]))
+                state_bw = tf.contrib.rnn.LSTMStateTuple(tf.tile(cell_bw.initial_state.c, [num_sentences, 1]), tf.tile(cell_bw.initial_state.h, [num_sentences, 1]))
+
+                (fw_outputs, bw_outputs), _ = tf.nn.bidirectional_dynamic_rnn(
+                  cell_fw=cell_fw,
+                  cell_bw=cell_bw,
+                  inputs=current_inputs,
+                  sequence_length=text_len,
+                  initial_state_fw=state_fw,
+                  initial_state_bw=state_bw)
+
+                text_outputs = tf.concat([fw_outputs, bw_outputs], 2) # [num_sentences, max_sentence_length, emb]
+                text_outputs = tf.nn.dropout(text_outputs, self.lstm_dropout)
+                if layer > 0:
+                    highway_gates = tf.sigmoid(util.projection(text_outputs, util.shape(text_outputs, 2))) # [num_sentences, max_sentence_length, emb]
+                    text_outputs = highway_gates * text_outputs + (1 - highway_gates) * current_inputs
+                current_inputs = text_outputs
+
+        return current_inputs
+
+
+
 
     def get_predicted_antecedents(self, antecedents, antecedent_scores):
         predicted_antecedents = []
