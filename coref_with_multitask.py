@@ -62,12 +62,10 @@ class CorefModel(object):
         self.enqueue_op = queue.enqueue(self.queue_input_tensors)
         self.input_tensors = queue.dequeue()
         self.swag_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_train_dir, f))])
-        self.is_multitask_threshold = 0.5 # 0.5 threshold. 
-        self.my_list = [1] * int((1 - self.is_multitask_threshold) * 100 ) + [0] * int(self.is_multitask_threshold*100)
-        is_multitask = random.choice(self.my_list)
+        self.is_multitask = True
 
 
-        if is_multitask:
+        if self.is_multitask:
             #pass correct_output and is_multitask as input to below function
             _, self.multitask_loss = self.get_predictions_and_loss(*self.input_tensors)
             self.global_step = tf.Variable(0, name="global_step", trainable=False)
@@ -306,9 +304,8 @@ class CorefModel(object):
         head_emb = tf.nn.dropout(head_emb, self.lexical_dropout) # [num_sentences, max_sentence_length, emb]
 
         text_len_mask = tf.sequence_mask(text_len, maxlen=max_sentence_length) # [num_sentence, max_sentence_length]
-        is_multitask = random.choice(self.my_list)
 
-        if is_multitask:
+        if self.is_multitask:
             max_sentence_length = tf.shape(swag_context_emb)[1]
             # here, we do the multitask learning here. 
             swag_len_mask = tf.sequence_mask(swag_text_len, maxlen=max_sentence_length) 
