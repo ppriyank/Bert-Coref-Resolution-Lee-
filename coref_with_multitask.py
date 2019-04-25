@@ -192,7 +192,6 @@ class CorefModel(object):
         one_hot_label = np.zeros((1, 5))
         one_hot_label[0][swag_label] = 1
         swag_label = one_hot_label
-        import pdb; pdb.set_trace()
         swag_sentences = [startphrase] + [c[1] for c in zipped]
         #. len(swag_sentences , N )
         max_sentence_length_swag = max(len(s) for s in swag_sentences)
