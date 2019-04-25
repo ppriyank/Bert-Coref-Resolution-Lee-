@@ -27,6 +27,7 @@ if __name__ == "__main__":
   max_f1 = 0
   
   with tf.Session() as session:
+    #session = tf_debug.LocalCLIDebugWrapperSession(session)
     session.run(tf.global_variables_initializer())
     model.start_enqueue_thread(session)
 
@@ -45,7 +46,6 @@ if __name__ == "__main__":
       my_list = [1] * int((1 - is_multitask_threshold) * 100 ) + [0] * int(is_multitask_threshold*100)
       is_multitask = random.choice(my_list)
       import pdb; pdb.set_trace()
-      session = tf_debug.LocalCLIDebugWrapperSession(session)
       loss, tf_global_step, _  = session.run([model.multitask_loss, model.global_step, model.multitask_train_op])
 
       if is_multitask:
