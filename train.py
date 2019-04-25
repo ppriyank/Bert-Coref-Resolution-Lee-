@@ -45,7 +45,6 @@ if __name__ == "__main__":
       is_multitask_threshold = 0.5
       my_list = [1] * int((1 - is_multitask_threshold) * 100 ) + [0] * int(is_multitask_threshold*100)
       is_multitask = random.choice(my_list)
-      import pdb; pdb.set_trace()
       loss, tf_global_step, _  = session.run([model.multitask_loss, model.global_step, model.multitask_train_op])
 
       if is_multitask:
@@ -57,8 +56,6 @@ if __name__ == "__main__":
           steps_per_second = tf_global_step / total_time
 
           average_multitask_loss = accumulated_multitask_loss / report_frequency
-          import pdb
-          pdb.set_trace()
           #print(average_multitask_loss)
           print("[{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_multitask_loss[0][0], steps_per_second))
           writer.add_summary(util.make_summary({"multitask_loss": average_multitask_loss}), tf_global_step)
