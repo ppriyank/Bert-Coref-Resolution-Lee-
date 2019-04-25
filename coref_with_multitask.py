@@ -18,9 +18,11 @@ import util
 import coref_ops
 import conll
 import metrics
-
-
-## I just need to know how to run this code. 
+from os import listdir
+from os.path import isfile, join
+import random 
+import random
+my_list = ['A'] * 5 + ['B'] * 5 + ['C'] * 90
 
 class CorefModel(object):
 
@@ -59,10 +61,13 @@ class CorefModel(object):
         queue = tf.PaddingFIFOQueue(capacity=10, dtypes=dtypes, shapes=shapes)
         self.enqueue_op = queue.enqueue(self.queue_input_tensors)
         self.input_tensors = queue.dequeue()
+        self.swag_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_train_dir, f))])
+        self.is_multitask_threshold = 0.5 # 0.5 threshold. 
+        self.my_list = [1] * ((1 - self.is_multitask_threshold) * 100 ) + [0] * (is_multitask_threshold*100)
+        is_multitask = random.choice(self.my_list)
 
-        self.is_multitask = True
 
-        if self.is_multitask:
+        if is_multitask:
             #pass correct_output and is_multitask as input to below function
             _, self.multitask_loss = self.get_predictions_and_loss(*self.input_tensors)
             self.global_step = tf.Variable(0, name="global_step", trainable=False)
@@ -144,7 +149,9 @@ class CorefModel(object):
         UNKNOWN_TOK = 102
         if is_training:
             embedding = self.train_file[file_name]["embd"][...]
-            swag_embedding = pickle.load(open(self.swag_train_dir+"swag_large_cased_"+str(index), "rb"))
+            swag_embedding = next(self.swag_embeddings)
+            #print("Remove this hard coded index!!!!!!!!!!!!!!!!!!!!!!")
+            #swag_embedding = pickle.load(open(self.swag_train_dir+"swag_large_cased_"+str(index), "rb"))
         else:
             embedding = self.test_file[file_name]["embd"][...]
         # context_embeddings = tf.reduce_mean(example["embedding"] ,2) 
@@ -298,8 +305,9 @@ class CorefModel(object):
         head_emb = tf.nn.dropout(head_emb, self.lexical_dropout) # [num_sentences, max_sentence_length, emb]
 
         text_len_mask = tf.sequence_mask(text_len, maxlen=max_sentence_length) # [num_sentence, max_sentence_length]
+        is_multitask = random.choice(self.my_list)
 
-        if self.is_multitask:
+        if is_multitask:
             max_sentence_length = tf.shape(swag_context_emb)[1]
             # here, we do the multitask learning here. 
             swag_len_mask = tf.sequence_mask(swag_text_len, maxlen=max_sentence_length) 
@@ -316,6 +324,8 @@ class CorefModel(object):
                 pairwise_rep = tf.expand_dims(pairwise_rep, 0)
                 scores.append(tf.matmul(pairwise_rep,weight_multitask_pairwise))
 
+            #import pdb
+            #pdb.set_trace()
             #cross entropy loss for the multitask learning
             cross_entropy_loss = -tf.log(tf.nn.softmax(scores)[0])
 
