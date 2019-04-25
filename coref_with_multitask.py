@@ -341,7 +341,7 @@ class CorefModel(object):
             tf.Print(new, [new])
             shape = tf.Print(shape, [shape])
             swag_label = tf.Print(swag_label, [swag_label])
-            cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(swag_label, scores)
+            cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=swag_label, logits=scores)
             return None, cross_entropy_loss
 
         else:
