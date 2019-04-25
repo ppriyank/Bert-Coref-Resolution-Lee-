@@ -339,10 +339,6 @@ class CorefModel(object):
             #cross entropy loss for the multitask learning
             scores = tf.reshape(scores, [1, 5])
             scores = tf.Print(scores, [scores])
-            shape = scores.get_shape()
-            new = "Yo"
-            tf.Print(new, [new])
-            shape = tf.Print(shape, [shape])
             swag_label = tf.Print(swag_label, [swag_label]) 
             swag_label = tf.reshape(swag_label, [1,5])
             cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=swag_label, logits=scores)
