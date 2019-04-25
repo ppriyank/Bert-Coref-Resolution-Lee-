@@ -191,7 +191,7 @@ class CorefModel(object):
                 swag_label = i
         one_hot_label = np.zeros(5)
         one_hot_label[swag_label] = 1
-        swag_label = one_hot_label
+        swag_label = one_hot_label.view((1, 5))
         import pdb; pdb.set_trace()
         swag_sentences = [startphrase] + [c[1] for c in zipped]
         #. len(swag_sentences , N )
@@ -346,7 +346,6 @@ class CorefModel(object):
             tf.Print(new, [new])
             shape = tf.Print(shape, [shape])
             swag_label = tf.Print(swag_label, [swag_label])
-            import pdb; pdb.set_trace()
             cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=[swag_label], logits=scores)
             return None, cross_entropy_loss
 
