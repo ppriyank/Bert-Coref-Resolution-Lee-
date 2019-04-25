@@ -39,7 +39,6 @@ if __name__ == "__main__":
     initial_time = time.time()
     
     while True:
-      is_multitask= True
       my_list = [1] * int((1 - self.is_multitask_threshold) * 100 ) + [0] * int(self.is_multitask_threshold*100)
       is_multitask = random.choice(my_list)
       loss, tf_global_step, _  = session.run([model.multitask_loss, model.global_step, model.multitask_train_op])
@@ -59,7 +58,7 @@ if __name__ == "__main__":
           print("[{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_multitask_loss[0][0], steps_per_second))
           writer.add_summary(util.make_summary({"multitask_loss": average_multitask_loss}), tf_global_step)
           accumulated_multitask_loss = 0.0
-          saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
+
         if tf_global_step % eval_frequency  == 0:
           print("Not evaluating")
           continue
@@ -77,8 +76,6 @@ if __name__ == "__main__":
           print("[{}] evaL_f1={:.2f}, max_f1={:.2f}".format(tf_global_step, eval_f1, max_f1))
 
       else:
-        ckpt = tf.train.get_checkpoint_state(log_dir)
-        saver.restore(session, ckpt.model_checkpoint_path)
         tf_loss = loss
         accumulated_loss += tf_loss
 
