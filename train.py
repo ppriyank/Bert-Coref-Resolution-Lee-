@@ -44,6 +44,7 @@ if __name__ == "__main__":
       loss, tf_global_step, _  = session.run([model.multitask_loss, model.global_step, model.multitask_train_op])
 
       if is_multitask:
+        print("Now training for SWAG")
         tf_multitask_loss = loss
         accumulated_multitask_loss += tf_multitask_loss
 
@@ -76,6 +77,7 @@ if __name__ == "__main__":
           print("[{}] evaL_f1={:.2f}, max_f1={:.2f}".format(tf_global_step, eval_f1, max_f1))
 
       else:
+        print("Now training Lee's code!")
         tf_loss = loss
         accumulated_loss += tf_loss
 
