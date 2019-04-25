@@ -246,7 +246,7 @@ class CorefModel(object):
         cluster_ids = cluster_ids[gold_spans]
 
         return tokens, context_word_emb, head_word_emb, lm_emb, text_len,\
-         is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb, swag_text_len
+         is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb, swag_text_len, swag_label
 
     def get_candidate_labels(self, candidate_starts, candidate_ends, labeled_starts, labeled_ends, labels):
         same_start = tf.equal(tf.expand_dims(labeled_starts, 1), tf.expand_dims(candidate_starts, 0)) # [num_labeled, num_candidates]
