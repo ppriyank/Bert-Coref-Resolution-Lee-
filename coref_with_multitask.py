@@ -63,7 +63,7 @@ class CorefModel(object):
         self.input_tensors = queue.dequeue()
         self.swag_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_train_dir, f))])
         self.is_multitask_threshold = 0.5 # 0.5 threshold. 
-        self.my_list = [1] * int((1 - self.is_multitask_threshold) * 100 ) + [0] * int(is_multitask_threshold*100)
+        self.my_list = [1] * int((1 - self.is_multitask_threshold) * 100 ) + [0] * int(self.is_multitask_threshold*100)
         is_multitask = random.choice(self.my_list)
 
 
@@ -149,7 +149,8 @@ class CorefModel(object):
         UNKNOWN_TOK = 102
         if is_training:
             embedding = self.train_file[file_name]["embd"][...]
-            swag_embedding = next(self.swag_embeddings)
+            swag_file = next(self.swag_embeddings)
+            swag_embedding = pickle.load(open(swag_file, "rb"))
             #print("Remove this hard coded index!!!!!!!!!!!!!!!!!!!!!!")
             #swag_embedding = pickle.load(open(self.swag_train_dir+"swag_large_cased_"+str(index), "rb"))
         else:
