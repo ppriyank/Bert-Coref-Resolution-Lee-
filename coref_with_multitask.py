@@ -66,7 +66,6 @@ class CorefModel(object):
 
 
         if self.is_multitask:
-            import pdb; pdb.set_trace()
             #pass correct_output and is_multitask as input to below function
             _, self.multitask_loss = self.get_predictions_and_loss(*self.input_tensors)
             self.global_step = tf.Variable(0, name="global_step", trainable=False)
@@ -325,6 +324,7 @@ class CorefModel(object):
             #import pdb
             #pdb.set_trace()
             #cross entropy loss for the multitask learning
+            tf.Print(scores, [scores])
             cross_entropy_loss = -tf.log(tf.nn.softmax(scores)[0])
 
             return None, cross_entropy_loss
