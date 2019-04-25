@@ -55,7 +55,7 @@ class CorefModel(object):
         # SWAG 
         input_props.append((tf.float32, [None, None, 1024])) # sentence embeddings
         input_props.append((tf.int32, [None]))  # text length
-        input_props.append((tf.int32, [1, 5])) # the label
+        input_props.append((tf.int32, [None])) # the label
         self.multitask_loss = 0 
         self.queue_input_tensors = [tf.placeholder(dtype, shape) for dtype, shape in input_props]
         dtypes, shapes = zip(*input_props)
@@ -343,8 +343,9 @@ class CorefModel(object):
             new = "Yo"
             tf.Print(new, [new])
             shape = tf.Print(shape, [shape])
-            swag_label = tf.Print(swag_label, [swag_label])
-            cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=[swag_label], logits=scores)
+            swag_label = tf.Print(swag_label, [swag_label]) 
+            swag_label = tf.reshape(swag_label, [1,5])
+            cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=swag_label, logits=scores)
             return None, cross_entropy_loss
 
         else:
