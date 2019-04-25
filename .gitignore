@@ -3,3 +3,6 @@ bert_file/*
 *.pickle
 dev.*
 *.txt
+*.so
+*.hdf5
+*.conf

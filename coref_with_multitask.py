@@ -144,7 +144,9 @@ class CorefModel(object):
         UNKNOWN_TOK = 102
         if is_training:
             embedding = self.train_file[file_name]["embd"][...]
-            swag_embedding = pickle.load(open(self.swag_train_dir+"swag_large_cased_"+str(index), "rb"))
+            swag_embedding = pickle.load(open(self.swag_train_dir+"swag_large_cased_999", "rb"))
+            #print("Remove this hard coded index!!!!!!!!!!!!!!!!!!!!!!")
+            #swag_embedding = pickle.load(open(self.swag_train_dir+"swag_large_cased_"+str(index), "rb"))
         else:
             embedding = self.test_file[file_name]["embd"][...]
         # context_embeddings = tf.reduce_mean(example["embedding"] ,2) 
@@ -316,6 +318,8 @@ class CorefModel(object):
                 pairwise_rep = tf.expand_dims(pairwise_rep, 0)
                 scores.append(tf.matmul(pairwise_rep,weight_multitask_pairwise))
 
+            #import pdb
+            #pdb.set_trace()
             #cross entropy loss for the multitask learning
             cross_entropy_loss = -tf.log(tf.nn.softmax(scores)[0])
 

@@ -51,11 +51,16 @@ if __name__ == "__main__":
           steps_per_second = tf_global_step / total_time
 
           average_multitask_loss = accumulated_multitask_loss / report_frequency
-          print("[{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_multitask_loss, steps_per_second))
+          #import pdb
+          #pdb.set_trace()
+          #print(average_multitask_loss)
+          print("[{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_multitask_loss[0][0], steps_per_second))
           writer.add_summary(util.make_summary({"multitask_loss": average_multitask_loss}), tf_global_step)
           accumulated_multitask_loss = 0.0
     
         if tf_global_step % eval_frequency  == 0:
+          print("Not evaluating")
+          continue
           #saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
           eval_summary, eval_f1 = model.evaluate(session)
           if eval_f1 > max_f1:
