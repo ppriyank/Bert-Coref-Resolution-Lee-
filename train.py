@@ -40,7 +40,7 @@ if __name__ == "__main__":
       saver.restore(session, ckpt.model_checkpoint_path)
 
     initial_time = time.time()
-    
+  
     while True:
       is_multitask_threshold = 0.5
       my_list = [1] * int((1 - is_multitask_threshold) * 100 ) + [0] * int(is_multitask_threshold*100)
@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
           average_multitask_loss = accumulated_multitask_loss / report_frequency
           #print(average_multitask_loss)
-          print("[{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_multitask_loss[0][0], steps_per_second))
+          print("[{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_multitask_loss[0], steps_per_second))
           writer.add_summary(util.make_summary({"multitask_loss": average_multitask_loss}), tf_global_step)
           accumulated_multitask_loss = 0.0
 
@@ -86,7 +86,7 @@ if __name__ == "__main__":
           steps_per_second = tf_global_step / total_time
 
           average_loss = accumulated_loss / report_frequency
-          print("[{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_loss[0][0], steps_per_second))
+          print("[{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_loss[0], steps_per_second))
           writer.add_summary(util.make_summary({"loss": average_loss}), tf_global_step)
           accumulated_loss = 0.0
     
