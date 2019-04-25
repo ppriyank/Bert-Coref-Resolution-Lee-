@@ -304,7 +304,7 @@ class CorefModel(object):
         head_emb = tf.nn.dropout(head_emb, self.lexical_dropout) # [num_sentences, max_sentence_length, emb]
 
         text_len_mask = tf.sequence_mask(text_len, maxlen=max_sentence_length) # [num_sentence, max_sentence_length]
-
+        self.is_multitask = True
         if self.is_multitask:
             max_sentence_length = tf.shape(swag_context_emb)[1]
             # here, we do the multitask learning here. 
