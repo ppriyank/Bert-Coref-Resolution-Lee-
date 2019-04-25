@@ -178,6 +178,7 @@ class CorefModel(object):
         distractor_1 = swag_embedding["distractor-1"]
         distractor_2 =  swag_embedding["distractor-2"]
         distractor_3 =  swag_embedding["distractor-3"]
+        labels = swag_embedding["label"]
 
         swag_sentences = [startphrase, gold_ending, distractor_0, distractor_1, distractor_2, distractor_3]
         #. len(swag_sentences , N )
@@ -204,14 +205,15 @@ class CorefModel(object):
         tokens = np.array(tokens)
         gold_starts, gold_ends = self.tensorize_mentions(gold_mentions)
         example_tensors = (tokens, context_word_emb, head_word_emb, lm_emb, text_len, \
-            is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb,swag_text_len)
+            is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb,swag_text_len, \
+            swag_labels)
         if is_training and len(sentences) > self.config["max_training_sentences"]:
             return self.truncate_example(*example_tensors)
         else:
             return example_tensors
 
     def truncate_example(self, tokens, context_word_emb, head_word_emb, lm_emb,  text_len, \
-     is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb,swag_text_len):
+     is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb,swag_text_len, swag_labels):
         max_training_sentences = self.config["max_training_sentences"]
         num_sentences = context_word_emb.shape[0]
         assert num_sentences > max_training_sentences
@@ -273,7 +275,7 @@ class CorefModel(object):
         return top_antecedents, top_antecedents_mask, top_fast_antecedent_scores, top_antecedent_offsets
 
     def get_predictions_and_loss(self, tokens, context_word_emb, head_word_emb, lm_emb, text_len,\
-         is_training, gold_starts, gold_ends, cluster_ids,swag_context_emb, swag_text_len):
+         is_training, gold_starts, gold_ends, cluster_ids,swag_context_emb, swag_text_len, swag_labels):
         """
         This is the major part of the architecutre, and is the placehlder. 
         We have two branches - one for SWAG, and another for the main Lee code.
@@ -324,8 +326,12 @@ class CorefModel(object):
             #import pdb
             #pdb.set_trace()
             #cross entropy loss for the multitask learning
-            tf.Print(scores, [scores])
-            cross_entropy_loss = -tf.log(tf.nn.softmax(scores)[0])
+            scores = tf.Print(scores, [scores])
+            shape = scores.get_shape()
+            new = "Yo"
+            tf.Print(new, [new])
+            shape = tf.Print(shape, [shape])
+            cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(swag_labels, scores)
 
             return None, cross_entropy_loss
 
