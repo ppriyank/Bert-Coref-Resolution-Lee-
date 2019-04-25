@@ -325,6 +325,7 @@ class CorefModel(object):
             #import pdb
             #pdb.set_trace()
             #cross entropy loss for the multitask learning
+            tf.Print(scores, [scores])
             cross_entropy_loss = -tf.log(tf.nn.softmax(scores)[0])
 
             return None, cross_entropy_loss
