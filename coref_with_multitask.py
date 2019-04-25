@@ -55,7 +55,7 @@ class CorefModel(object):
         # SWAG 
         input_props.append((tf.float32, [None, None, 1024])) # sentence embeddings
         input_props.append((tf.int32, [None]))  # text length
-        input_props.append((tf.int32, [None])) # the label
+        input_props.append((tf.int32, [1, 5])) # the label
         self.multitask_loss = 0 
         self.queue_input_tensors = [tf.placeholder(dtype, shape) for dtype, shape in input_props]
         dtypes, shapes = zip(*input_props)
