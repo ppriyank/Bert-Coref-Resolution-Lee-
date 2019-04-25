@@ -189,14 +189,13 @@ class CorefModel(object):
             current = zipped[i]
             if current[0] == 0:
                 swag_label = i
-        one_hot_label = np.zeros(5)
-        one_hot_label[swag_label] = 1
-        swag_label = one_hot_label.view((1, 5))
+        one_hot_label = np.zeros((1, 5))
+        one_hot_label[0][swag_label] = 1
+        swag_label = one_hot_label
         import pdb; pdb.set_trace()
         swag_sentences = [startphrase] + [c[1] for c in zipped]
         #. len(swag_sentences , N )
         max_sentence_length_swag = max(len(s) for s in swag_sentences)
-        max_word_length_swag  = max(max(max(len(w) for w in s) for s in swag_sentences), max(self.config["filter_widths"]))
         swag_text_len = np.array([len(s) for s in swag_sentences])
         swag_context_word_emb = np.zeros([len(swag_sentences), 400, 1024]) # maxkword_length is 400
         for i, sentence in enumerate(swag_sentences):
