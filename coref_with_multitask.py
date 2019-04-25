@@ -66,7 +66,6 @@ class CorefModel(object):
 
 
         if self.is_multitask:
-            import pdb; pdb.set_trace()
             #pass correct_output and is_multitask as input to below function
             _, self.multitask_loss = self.get_predictions_and_loss(*self.input_tensors)
             self.global_step = tf.Variable(0, name="global_step", trainable=False)
