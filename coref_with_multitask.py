@@ -63,7 +63,7 @@ class CorefModel(object):
         self.input_tensors = queue.dequeue()
         self.swag_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_train_dir, f))])
         self.is_multitask_threshold = 0.5 # 0.5 threshold. 
-        self.my_list = [1] * ((1 - self.is_multitask_threshold) * 100 ) + [0] * (is_multitask_threshold*100)
+        self.my_list = [1] * int((1 - self.is_multitask_threshold) * 100 ) + [0] * int(is_multitask_threshold*100)
         is_multitask = random.choice(self.my_list)
 
 
