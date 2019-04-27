@@ -37,6 +37,7 @@ class CorefModel(object):
         # else:
         self.train_file = h5py.File(config["bert_train"], "r") 
         self.swag_train_dir = config["swag_train_dir"]
+        self.swag_val_dir = config["swag_val_dir"]
         self.lm_file = None
         self.lm_layers = self.config["lm_layers"]
         self.lm_size = self.config["lm_size"]
@@ -63,6 +64,7 @@ class CorefModel(object):
         self.enqueue_op = queue.enqueue(self.queue_input_tensors)
         self.input_tensors = queue.dequeue()
         self.swag_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_train_dir, f))])
+        self.swag_test_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_val_dir, f))])
         self.is_multitask = True
 
 
@@ -634,11 +636,13 @@ class CorefModel(object):
         evaluator.update(predicted_clusters, gold_clusters, mention_to_predicted, mention_to_gold)
         return predicted_clusters
 
-    def evaluate(self, session, official_stdout=False):
+    def evaluate(self, session, phase, official_stdout=False):
     # self.load_eval_data()
         with open(self.config["inv_mapping"], 'rb') as handle:
                 inv_mapping = pickle.load(handle)
         with open(self.config["eval_path"], 'rb') as handle:
+            if phase == 'swag':
+                test = next(swag_test_embeddings)
                 test = pickle.load(handle)
 
         coref_predictions = {}
@@ -649,7 +653,7 @@ class CorefModel(object):
             example = test[i]
             file_name = example["doc_key"]
             inv_map = inv_mapping[file_name]
-            tensorized_example = self.tensorize_example(example, i,is_training=False)
+            tensorized_example = self.tensorize_example(example, i, is_training=False)
             _, _, _, _, _, _,  gold_starts, gold_ends, _ = tensorized_example
             feed_dict = {i:t for i,t in zip(self.input_tensors, tensorized_example)}
             _, _, _, top_span_starts, top_span_ends, top_antecedents, top_antecedent_scores = session.run(self.predictions, feed_dict=feed_dict)
