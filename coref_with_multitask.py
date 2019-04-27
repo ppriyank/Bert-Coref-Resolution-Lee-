@@ -649,7 +649,7 @@ class CorefModel(object):
             example = test[i]
             file_name = example["doc_key"]
             inv_map = inv_mapping[file_name]
-            tensorized_example = self.tensorize_example(example, is_training=False)
+            tensorized_example = self.tensorize_example(example, i,is_training=False)
             _, _, _, _, _, _,  gold_starts, gold_ends, _ = tensorized_example
             feed_dict = {i:t for i,t in zip(self.input_tensors, tensorized_example)}
             _, _, _, top_span_starts, top_span_ends, top_antecedents, top_antecedent_scores = session.run(self.predictions, feed_dict=feed_dict)
