@@ -45,62 +45,63 @@ if __name__ == "__main__":
       is_multitask_threshold = 0.5
       my_list = [1] * int((1 - is_multitask_threshold) * 100 ) + [0] * int(is_multitask_threshold*100)
       is_multitask = random.choice(my_list)
-      loss, tf_global_step, _  = session.run([model.multitask_loss, model.global_step, model.multitask_train_op])
+      for i in range(500): # 500 steps
+        loss, tf_global_step, _  = session.run([model.multitask_loss, model.global_step, model.multitask_train_op])
 
-      if is_multitask:
-        tf_multitask_loss = loss
-        accumulated_multitask_loss += tf_multitask_loss
+        if is_multitask:
+          tf_multitask_loss = loss
+          accumulated_multitask_loss += tf_multitask_loss
 
-        if tf_global_step % report_frequency == 0:
-          total_time = time.time() - initial_time
-          steps_per_second = tf_global_step / total_time
+          if tf_global_step % report_frequency == 0:
+            total_time = time.time() - initial_time
+            steps_per_second = tf_global_step / total_time
 
-          average_multitask_loss = accumulated_multitask_loss / report_frequency
-          #print(average_multitask_loss)
-          print("[{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_multitask_loss[0], steps_per_second))
-          writer.add_summary(util.make_summary({"multitask_loss": average_multitask_loss}), tf_global_step)
-          accumulated_multitask_loss = 0.0
+            average_multitask_loss = accumulated_multitask_loss / report_frequency
+            #print(average_multitask_loss)
+            print("Multitask [{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_multitask_loss[0], steps_per_second))
+            writer.add_summary(util.make_summary({"multitask_loss": average_multitask_loss}), tf_global_step)
+            accumulated_multitask_loss = 0.0
 
-        if tf_global_step % eval_frequency  == 0:
-          print("Not evaluating")
-          continue
-          #saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
-          eval_summary, eval_f1 = model.evaluate(session)
-          if eval_f1 > max_f1:
-            saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
-            max_f1 = eval_f1
-            util.copy_checkpoint(os.path.join(log_dir, "model-{}".format(tf_global_step)), os.path.join(log_dir, "model.max.ckpt"))
-            print("====")
+          if tf_global_step % eval_frequency  == 0:
+            print("Not evaluating")
+            continue
+            #saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
+            eval_summary, eval_f1 = model.evaluate(session)
+            if eval_f1 > max_f1:
+              saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
+              max_f1 = eval_f1
+              util.copy_checkpoint(os.path.join(log_dir, "model-{}".format(tf_global_step)), os.path.join(log_dir, "model.max.ckpt"))
+              print("====")
 
-          writer.add_summary(eval_summary, tf_global_step)
-          writer.add_summary(util.make_summary({"max_eval_f1": max_f1}), tf_global_step)
+            writer.add_summary(eval_summary, tf_global_step)
+            writer.add_summary(util.make_summary({"max_eval_f1": max_f1}), tf_global_step)
 
-          print("[{}] evaL_f1={:.2f}, max_f1={:.2f}".format(tf_global_step, eval_f1, max_f1))
+            print("[{}] evaL_f1={:.2f}, max_f1={:.2f}".format(tf_global_step, eval_f1, max_f1))
 
-      else:
-        tf_loss = loss
-        accumulated_loss += tf_loss
+        else:
+          tf_loss = loss
+          accumulated_loss += tf_loss
 
-        if tf_global_step % report_frequency == 0:
-          total_time = time.time() - initial_time
-          steps_per_second = tf_global_step / total_time
+          if tf_global_step % report_frequency == 0:
+            total_time = time.time() - initial_time
+            steps_per_second = tf_global_step / total_time
 
-          average_loss = accumulated_loss / report_frequency
-          print("[{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_loss[0], steps_per_second))
-          writer.add_summary(util.make_summary({"loss": average_loss}), tf_global_step)
-          accumulated_loss = 0.0
-    
-        if tf_global_step % eval_frequency  == 0:
-          #saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
-          eval_summary, eval_f1 = model.evaluate(session)
-          if eval_f1 > max_f1:
-            saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
-            max_f1 = eval_f1
-            util.copy_checkpoint(os.path.join(log_dir, "model-{}".format(tf_global_step)), os.path.join(log_dir, "model.max.ckpt"))
-            print("====")
+            average_loss = accumulated_loss / report_frequency
+            print("Coreference [{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_loss[0], steps_per_second))
+            writer.add_summary(util.make_summary({"loss": average_loss}), tf_global_step)
+            accumulated_loss = 0.0
+      
+          if tf_global_step % eval_frequency  == 0:
+            #saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
+            eval_summary, eval_f1 = model.evaluate(session)
+            if eval_f1 > max_f1:
+              saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
+              max_f1 = eval_f1
+              util.copy_checkpoint(os.path.join(log_dir, "model-{}".format(tf_global_step)), os.path.join(log_dir, "model.max.ckpt"))
+              print("====")
 
-          writer.add_summary(eval_summary, tf_global_step)
-          writer.add_summary(util.make_summary({"max_eval_f1": max_f1}), tf_global_step)
+            writer.add_summary(eval_summary, tf_global_step)
+            writer.add_summary(util.make_summary({"max_eval_f1": max_f1}), tf_global_step)
 
-          print("[{}] evaL_f1={:.2f}, max_f1={:.2f}".format(tf_global_step, eval_f1, max_f1))
-    
+            print("[{}] evaL_f1={:.2f}, max_f1={:.2f}".format(tf_global_step, eval_f1, max_f1))
+      
