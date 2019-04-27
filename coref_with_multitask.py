@@ -65,11 +65,10 @@ class CorefModel(object):
         self.input_tensors = queue.dequeue()
         self.swag_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_train_dir, f))])
         self.swag_test_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_val_dir, f))])
-        self.is_multitask = True
         is_multitask_placeholder = tf.placeholder(tf.bool)
         self.is_multitask = is_multitask_placeholder
 
-        if self.is_multitask:
+        def swag_run():
             #pass correct_output and is_multitask as input to below function
             _, self.multitask_loss = self.get_predictions_and_loss(*self.input_tensors)
             self.global_step = tf.Variable(0, name="global_step", trainable=False)
@@ -85,7 +84,7 @@ class CorefModel(object):
             }
             optimizer = optimizers[self.config["optimizer"]](learning_rate)
             self.multitask_train_op = optimizer.apply_gradients(zip(gradients, trainable_params), global_step=self.global_step)
-        else:
+        def lee_run():
             self.predictions, self.loss = self.get_predictions_and_loss(*self.input_tensors)
             self.global_step = tf.Variable(0, name="global_step", trainable=False)
             self.reset_global_step = tf.assign(self.global_step, 0)
@@ -100,6 +99,8 @@ class CorefModel(object):
             }
             optimizer = optimizers[self.config["optimizer"]](learning_rate)
             self.train_op = optimizer.apply_gradients(zip(gradients, trainable_params), global_step=self.global_step)
+
+        tf.cond(tf.equal(self.is_multitask, tf.constant(True)), swag_run ,lee_run)
 
     def start_enqueue_thread(self, session):
         with open(self.config["train_path"], 'rb') as handle:
@@ -320,7 +321,7 @@ class CorefModel(object):
         head_emb = tf.nn.dropout(head_emb, self.lexical_dropout) # [num_sentences, max_sentence_length, emb]
 
         text_len_mask = tf.sequence_mask(text_len, maxlen=max_sentence_length) # [num_sentence, max_sentence_length]
-        if self.is_multitask:
+        def swag_predictions():
             max_sentence_length = tf.shape(swag_context_emb)[1]
             # here, we do the multitask learning here. 
             swag_len_mask = tf.sequence_mask(swag_text_len, maxlen=max_sentence_length) 
@@ -344,13 +345,11 @@ class CorefModel(object):
             #pdb.set_trace()
             #cross entropy loss for the multitask learning
             scores = tf.reshape(scores, [1, 5])
-            #scores = tf.Print(scores, [scores])
-            #swag_label = tf.Print(swag_label, [swag_label]) 
-            swag_label = tf.reshape(swag_label, [1,5])
-            cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=swag_label, logits=scores)
+            swag_label_m = tf.reshape(swag_label, [1,5])
+            cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=swag_label_m, logits=scores)
             return None, cross_entropy_loss
 
-        else:
+        def lee_predictions():
             context_outputs = self.lstm_contextualize(context_emb, text_len, text_len_mask) # [num_words, emb]
 
             num_words = util.shape(context_outputs, 0)
@@ -427,6 +426,7 @@ class CorefModel(object):
             loss = tf.reduce_sum(loss) # []
 
             return [candidate_starts, candidate_ends, candidate_mention_scores, top_span_starts, top_span_ends, top_antecedents, top_antecedent_scores], loss
+        tf.cond(tf.equal(self.is_multitask, tf.constant(True)), swag_predictions,   lee_predictions)
 
     def get_span_emb(self, head_emb, context_outputs, span_starts, span_ends):
         span_emb_list = []
