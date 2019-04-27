@@ -63,8 +63,8 @@ class CorefModel(object):
         self.enqueue_op = queue.enqueue(self.queue_input_tensors)
         self.input_tensors = queue.dequeue()
         self.swag_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_train_dir, f))])
-        self.is_multitask = True
-
+        is_multitask_placeholder = tf.placeholder(tf.bool)
+        self.is_multitask = is_multitask_placeholder
 
         if self.is_multitask:
             #pass correct_output and is_multitask as input to below function
@@ -328,10 +328,13 @@ class CorefModel(object):
             weight_multitask_pairwise = tf.get_variable('multitask_pairwise_rep', shape = [2 * 400 * 500, 1])
             scores = []
             # concatkstart with the ith sentence option.
+            
             for i in range(1,6):
                 pairwise_rep = tf.concat([context_outputs[0], context_outputs[i]], axis=0)
                 pairwise_rep = tf.reshape(pairwise_rep, [-1])
                 pairwise_rep = tf.expand_dims(pairwise_rep, 0)
+                pairwise_rep = tf.Print(pairwise_rep, [tf.shape(pairwise_rep), pairwise_rep], "printing pairwise_rep: ")
+                weight_multitask_pairwise = tf.Print(weight_multitask_pairwise, [tf.shape(weight_multitask_pairwise), weight_multitask_pairwise], "printing weights: ")
                 scores.append(tf.matmul(pairwise_rep,weight_multitask_pairwise))
 
             #import pdb
