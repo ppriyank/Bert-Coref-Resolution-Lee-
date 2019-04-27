@@ -6,3 +6,4 @@ dev.*
 *.so
 *.hdf5
 *.conf
+logs/best/*
