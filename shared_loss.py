@@ -69,7 +69,7 @@ class CorefModel(object):
         # self.is_multitask = is_multitask_placeholder
         #pass correct_output and is_multitask as input to below function
         _, self.multitask_loss1 = self.get_predictions_and_loss_cm(*self.input_tensors)
-        
+        self.multitask_loss1 = self.multitask_loss1 /10
         self.global_step1 = tf.Variable(0, name="global_step", trainable=False)
         self.reset_global_step1 = tf.assign(self.global_step1, 0)
         learning_rate1= tf.train.exponential_decay(self.config["learning_rate"], self.global_step1,
@@ -80,30 +80,29 @@ class CorefModel(object):
         }
         optimizer1 = optimizers1[self.config["optimizer"]](learning_rate1)
         
-        trainable_params1 = tf.trainable_variables()
-        gradients1 = tf.gradients(self.multitask_loss1, trainable_params1)
-        gradients1, _ = tf.clip_by_global_norm(gradients1, self.config["max_gradient_norm"])
-        self.multitask_train_op1 = optimizer1.apply_gradients(zip(gradients1, trainable_params1), global_step=self.global_step1)
-        
         self.predictions2, self.loss2 = self.get_predictions_and_loss(*self.input_tensors)
-        self.global_step2 = tf.Variable(0, name="global_step", trainable=False)
-        self.reset_global_step2 = tf.assign(self.global_step2, 0)
+        self.loss = self.loss2 + self.multitask_loss1 
+        trainable_params1 = tf.trainable_variables()
+        gradients1 = tf.gradients(self.loss, trainable_params1)
+        gradients1, _ = tf.clip_by_global_norm(gradients1, self.config["max_gradient_norm"])
+        
+        self.train_op = optimizer1.apply_gradients(zip(gradients1, trainable_params1), global_step=self.global_step1)
         # learning_rate2 = tf.train.exponential_decay(self.config["learning_rate"], self.global_step2,
         #                                            self.config["decay_frequency"], self.config["decay_rate"], staircase=True)
-        trainable_params2 = tf.trainable_variables()
-        lee_weight = []
-        for param in trainable_params2:
-            if len(param.name) < len("yolo_common_sense"):
-                lee_weight += [param]
-                continue 
-            if param.name[:4] != "yolo":
-                lee_weight += [param]
-                continue 
+        # trainable_params2 = tf.trainable_variables()
+        # lee_weight = []
+        # for param in trainable_params2:
+        #     if len(param.name) < len("yolo_common_sense"):
+        #         lee_weight += [param]
+        #         continue 
+        #     if param.name[:4] != "yolo":
+        #         lee_weight += [param]
+        #         continue 
             
 
-        gradients2 = tf.gradients(self.loss2, lee_weight)
-        gradients2, _ = tf.clip_by_global_norm(gradients2, self.config["max_gradient_norm"])
-        self.train_op2 = optimizer1.apply_gradients(zip(gradients2, lee_weight), global_step=self.global_step2)
+        # gradients2 = tf.gradients(self.loss2, lee_weight)
+        # gradients2, _ = tf.clip_by_global_norm(gradients2, self.config["max_gradient_norm"])
+        # self.train_op2 = optimizer1.apply_gradients(zip(gradients2, lee_weight), global_step=self.global_step2)
 
         
     def start_enqueue_thread(self, session):
