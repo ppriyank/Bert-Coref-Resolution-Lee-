@@ -10,6 +10,7 @@ import tensorflow as tf
 import shared_loss as cm
 import util
 import random 
+import logging as log
 from tensorflow.python import debug as tf_debug
 
 if __name__ == "__main__":
@@ -36,11 +37,12 @@ if __name__ == "__main__":
 
     ckpt = tf.train.get_checkpoint_state(log_dir)
     if ckpt and ckpt.model_checkpoint_path:
-      print("Restoring from: {}".format(ckpt.model_checkpoint_path))
+      log.info("Restoring from: {}".format(ckpt.model_checkpoint_path))
       saver.restore(session, ckpt.model_checkpoint_path)
 
     initial_time = time.time()
-  
+    log.info("We're reporting with frequency: %d" % report_frequency)
+    log.info"We're reporting with eval frequency: %d" % eval_frequency)
     while True:
         tf_loss, tf_global_step, _  = session.run([model.loss, model.global_step1, model.train_op])
         accumulated_loss += tf_loss
@@ -50,7 +52,7 @@ if __name__ == "__main__":
           steps_per_second = tf_global_step / total_time
 
           average_loss = accumulated_loss / report_frequency
-          print("Coreference [{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_loss[0], steps_per_second))
+          log.info("Coreference [{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_loss[0], steps_per_second))
           writer.add_summary(util.make_summary({"loss": average_loss}), tf_global_step)
           accumulated_loss = 0.0
     
@@ -61,10 +63,9 @@ if __name__ == "__main__":
             saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
             max_f1 = eval_f1
             util.copy_checkpoint(os.path.join(log_dir, "model-{}".format(tf_global_step)), os.path.join(log_dir, "model.max.ckpt"))
-            print("====")
 
           writer.add_summary(eval_summary, tf_global_step)
           writer.add_summary(util.make_summary({"max_eval_f1": max_f1}), tf_global_step)
 
-          print("[{}] evaL_f1={:.2f}, max_f1={:.2f}".format(tf_global_step, eval_f1, max_f1))
+          log.info("[{}] evaL_f1={:.2f}, max_f1={:.2f}".format(tf_global_step, eval_f1, max_f1))
       
