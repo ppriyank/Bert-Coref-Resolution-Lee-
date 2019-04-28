@@ -65,8 +65,8 @@ class CorefModel(object):
         self.input_tensors = queue.dequeue()
         self.swag_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_train_dir, f))])
         self.swag_test_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_val_dir, f))])
-        is_multitask_placeholder = tf.placeholder(tf.bool)
-        self.is_multitask = is_multitask_placeholder
+        # is_multitask_placeholder = tf.placeholder(tf.bool)
+        # self.is_multitask = is_multitask_placeholder
 
         def swag_run():
             #pass correct_output and is_multitask as input to below function
@@ -105,6 +105,8 @@ class CorefModel(object):
     def start_enqueue_thread(self, session):
         with open(self.config["train_path"], 'rb') as handle:
             train_examples = pickle.load(handle)
+        is_multitask_threshold = 0.5
+        my_list = [1] * int((1 - is_multitask_threshold) * 100 ) + [0] * int(is_multitask_threshold*100)
         def _enqueue_loop():
             while True:
                 random.shuffle(train_examples)
@@ -116,6 +118,7 @@ class CorefModel(object):
                 or file_name  ==   'nw/wsj/20/wsj_2013_0' :
                         continue
                     #import pdb; pdb.set_trace()
+                    self.is_multitask = random.choice(my_list)
                     tensorized_example = self.tensorize_example(example, i, is_training=True)
                     feed_dict = dict(zip(self.queue_input_tensors, tensorized_example))
                     session.run(self.enqueue_op, feed_dict=feed_dict)
@@ -425,8 +428,13 @@ class CorefModel(object):
             loss = self.softmax_loss(top_antecedent_scores, top_antecedent_labels) # [k]
             loss = tf.reduce_sum(loss) # []
 
-            return [candidate_starts, candidate_ends, candidate_mention_scores, top_span_starts, top_span_ends, top_antecedents, top_antecedent_scores], loss
-        tf.cond(tf.equal(self.is_multitask, tf.constant(True)), swag_predictions,   lee_predictions)
+            return [candidate_starts, candidate_ends, candidate_mention_scores, top_span_starts, top_span_ends, top_antecedents, top_antecedent_scores], loss 
+        if self.is_multitask:
+            return swag_predictions()
+        else:
+            return lee_predictions()
+
+        # tf.cond(tf.equal(self.is_multitask, tf.constant(True)), swag_predictions,   lee_predictions)
 
     def get_span_emb(self, head_emb, context_outputs, span_starts, span_ends):
         span_emb_list = []

@@ -42,13 +42,11 @@ if __name__ == "__main__":
     initial_time = time.time()
   
     while True:
-      is_multitask_threshold = 0.5
-      my_list = [1] * int((1 - is_multitask_threshold) * 100 ) + [0] * int(is_multitask_threshold*100)
-      is_multitask = random.choice(my_list)
-
-
-      if is_multitask:
-	      tf_multitask_loss, tf_global_step, _  = session.run([model.multitask_loss, model.global_step, model.multitask_train_op], feed_dict={is_multitask_placeholder: True})
+      # is_multitask_threshold = 0.5
+      # my_list = [1] * int((1 - is_multitask_threshold) * 100 ) + [0] * int(is_multitask_threshold*100)
+      # is_multitask = random.choice(my_list)
+      if model.is_multitask:
+	      tf_multitask_loss, tf_global_step, _  = session.run([model.multitask_loss, model.global_step, model.multitask_train_op])
         accumulated_multitask_loss += tf_multitask_loss
 
         if tf_global_step % report_frequency == 0:
