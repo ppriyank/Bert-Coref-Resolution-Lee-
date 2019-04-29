@@ -666,9 +666,9 @@ class CorefModel(object):
         labels: [num_test] list of labels. 
 
         """
-        softmaxed_preds = tf.nn.softmax(preds)
-        labels = np.argmax(labels, axis=1)
-        predictions = np.argmax(softmaxed_preds, axis=1)
+        preds =np.array(preds)
+        predictions = np.argmax(preds, axis=1)
+        labels= np.argmax(labels, axis=1)
         accuracy = tf.metrics.accuracy(labels, predictions)
         return accuracy
 
@@ -691,7 +691,6 @@ class CorefModel(object):
             tensorized_example = self.tensorize_example(example, i, is_training=False)
             feed_dict = {i:t for i,t in zip(self.input_tensors, tensorized_example)}
             lee_predictions, swag_pred = session.run([self.predictions2, self.swag_predictions], feed_dict=feed_dict)
-            import pdb; pdb.set_trace()
             _, _, _, top_span_starts, top_span_ends, top_antecedents, top_antecedent_scores = lee_predictions
             top_span_starts = inv_map[top_span_starts]
             top_span_ends = inv_map[top_span_ends]
@@ -699,8 +698,8 @@ class CorefModel(object):
             coref_predictions[file_name] = self.evaluate_coref(top_span_starts, top_span_ends, predicted_antecedents, example["clusters"], coref_evaluator)
             # SWAG evaluation
             swag_label = tensorized_example[-1]
-            swag_predictions.append(swag_pred)
-            swag_labels.append(swag_label)
+            swag_predictions.append(swag_pred[0])
+            swag_labels.append(swag_label[0])
             if i % 10 == 0:
                 print("Evaluated {}/{} examples.".format(i + 1, len(test)))
 
