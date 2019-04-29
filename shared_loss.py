@@ -669,7 +669,10 @@ class CorefModel(object):
         preds =np.array(preds)
         predictions = np.argmax(preds, axis=1)
         labels= np.argmax(labels, axis=1)
-        accuracy = tf.metrics.accuracy(labels, predictions)
+        import sklearn
+        from sklearn import metrics
+        from sklearn.metrics import accuracy_score
+        accuracy = accuracy_score(labels, predictions)
         return accuracy
 
     def evaluate(self, session, official_stdout=False):
