@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
   report_frequency = config["report_frequency"]
   eval_frequency = config["eval_frequency"]
-
+  eval_frequency = 1
   model = cm.CorefModel(config)
   saver = tf.train.Saver()
 

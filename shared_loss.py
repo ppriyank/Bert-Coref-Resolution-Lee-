@@ -64,11 +64,11 @@ class CorefModel(object):
         self.enqueue_op = queue.enqueue(self.queue_input_tensors)
         self.input_tensors = queue.dequeue()
         self.swag_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_train_dir, f))])
-        self.swag_test_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_val_dir, f))])
+        self.swag_test_embeddings = iter([f for f in listdir(self.swag_val_dir) if isfile(join(self.swag_val_dir, f))])
         # is_multitask_placeholder = tf.placeholder(tf.bool)
         # self.is_multitask = is_multitask_placeholder
         #pass correct_output and is_multitask as input to below function
-        _, self.multitask_loss1 = self.get_predictions_and_loss_cm(*self.input_tensors)
+        self.swag_predictions, self.multitask_loss1 = self.get_predictions_and_loss_cm(*self.input_tensors)
         self.multitask_loss1 = self.multitask_loss1 /10
         self.global_step1 = tf.Variable(0, name="global_step", trainable=False)
         self.reset_global_step1 = tf.assign(self.global_step1, 0)
@@ -164,6 +164,8 @@ class CorefModel(object):
             #swag_embedding = pickle.load(open(self.swag_train_dir+"swag_large_cased_"+str(index), "rb"))
         else:
             embedding = self.test_file[file_name]["embd"][...]
+            swag_embedding = next(self.swag_test_embeddings)
+
         # context_embeddings = tf.reduce_mean(example["embedding"] ,2) 
         gold_mentions = sorted(tuple(m) for m in util.flatten(clusters))
         gold_mention_map = {m:i for i,m in enumerate(gold_mentions)}
@@ -226,7 +228,7 @@ class CorefModel(object):
         tokens = np.array(tokens)
         gold_starts, gold_ends = self.tensorize_mentions(gold_mentions)
         example_tensors = (tokens, context_word_emb, head_word_emb, lm_emb, text_len, \
-            is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb,swag_text_len, \
+            is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb, swag_text_len, \
             swag_label)
         if is_training and len(sentences) > self.config["max_training_sentences"]:
             return self.truncate_example(*example_tensors)
@@ -327,7 +329,7 @@ class CorefModel(object):
             scores = tf.reshape(scores, [1, 5])
             swag_label_m = tf.reshape(swag_label, [1,5])
             cross_entropy_loss_cm = tf.nn.softmax_cross_entropy_with_logits_v2(labels=swag_label_m, logits=scores)
-            return None, cross_entropy_loss_cm
+            return scores, cross_entropy_loss_cm
 
     def get_predictions_and_loss(self, tokens, context_word_emb, head_word_emb, lm_emb, text_len,\
          is_training, gold_starts, gold_ends, cluster_ids,swag_context_emb, swag_text_len, swag_label):
@@ -615,10 +617,11 @@ class CorefModel(object):
         predicted_antecedents = []
         for i, index in enumerate(np.argmax(antecedent_scores, axis=1) - 1):
             if index < 0:
-                predicted_antecedents.append(-1)
+                predicted_antecedents.append(-1) # this wasn't the one here
             else:
                 predicted_antecedents.append(antecedents[i, index])
         return predicted_antecedents
+
 
     def get_predicted_clusters(self, top_span_starts, top_span_ends, predicted_antecedents):
         mention_to_predicted = {}
@@ -655,17 +658,27 @@ class CorefModel(object):
         evaluator.update(predicted_clusters, gold_clusters, mention_to_predicted, mention_to_gold)
         return predicted_clusters
 
-    def evaluate(self, session, phase, official_stdout=False):
+    def swag_evaluation(self, preds, labels):
+        """
+        preds is a [num_test] list of preds and labels, 
+        where preds is not-yet-softmaxed scores.
+        labels: [num_test] list of labels. 
+
+        """
+        softmaxed_preds = tf.nn.softmax(preds)
+        predictions = np.argmax(softmaxed_preds, axis=1)
+        accuracy = tf.metrics.accuracy(labels, predictions)
+        return accuracy
+
+    def evaluate(self, session, official_stdout=False):
     # self.load_eval_data()
         with open(self.config["inv_mapping"], 'rb') as handle:
-                inv_mapping = pickle.load(handle)
-        with open(self.config["eval_path"], 'rb') as handle:
-            if phase == 'swag':
-                test = next(swag_test_embeddings)
-                test = pickle.load(handle)
+            inv_mapping = pickle.load(handle)
 
         coref_predictions = {}
         coref_evaluator = metrics.CorefEvaluator()
+        swag_predictions = []
+        swag_labels = []
         for  i in range(len(test)):
             if i == 191 or i == 217 or i  == 225 :
                 continue  
@@ -673,16 +686,20 @@ class CorefModel(object):
             file_name = example["doc_key"]
             inv_map = inv_mapping[file_name]
             tensorized_example = self.tensorize_example(example, i, is_training=False)
-            _, _, _, _, _, _,  gold_starts, gold_ends, _ = tensorized_example
             feed_dict = {i:t for i,t in zip(self.input_tensors, tensorized_example)}
-            _, _, _, top_span_starts, top_span_ends, top_antecedents, top_antecedent_scores = session.run(self.predictions, feed_dict=feed_dict)
+            _, _, _, top_span_starts, top_span_ends, top_antecedents, top_antecedent_scores, swag_pred = session.run(self.predictions2, self.swag_predictions, feed_dict=feed_dict)
             top_span_starts = inv_map[top_span_starts]
             top_span_ends = inv_map[top_span_ends]
             predicted_antecedents = self.get_predicted_antecedents(top_antecedents, top_antecedent_scores)
             coref_predictions[file_name] = self.evaluate_coref(top_span_starts, top_span_ends, predicted_antecedents, example["clusters"], coref_evaluator)
+            # SWAG evaluation
+            swag_label = tensorize_example[-1]
+            swag_predictions.append(swag_pred)
+            swag_labels.append(swag_label)
             if i % 10 == 0:
                 print("Evaluated {}/{} examples.".format(i + 1, len(test)))
 
+        #. and now you getthe predictiosn basically. 
         summary_dict = {}
         conll_results = conll.evaluate_conll(self.config["conll_eval_path"], coref_predictions, official_stdout)
         average_f1 = sum(results["f"] for results in conll_results.values()) / len(conll_results)
@@ -696,5 +713,7 @@ class CorefModel(object):
         print("Average precision (py): {:.2f}%".format(p * 100))
         summary_dict["Average recall (py)"] = r
         print("Average recall (py): {:.2f}%".format(r * 100))
-
+        print("Now evaluating SWAG")
+        swag_accuracy = self.swag_evaluation(swag_predictions, swag_labels)
+        print("Average SWAG accuracy is : {:.2f}%".format(swag_accuracy * 100))
         return util.make_summary(summary_dict), average_f1
