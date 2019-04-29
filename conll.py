@@ -74,7 +74,7 @@ def output_conll(input_file, output_file, predictions):
       word_index += 1
 
 def official_conll_eval(gold_path, predicted_path, metric, official_stdout=False):
-  cmd = ["../../dataset/proper/conll-2012/scorer/v8.01/scorer.pl", metric, gold_path, predicted_path, "none"]
+  cmd = ["../dataset/proper/conll-2012/scorer/v8.01/scorer.pl", metric, gold_path, predicted_path, "none"]
   process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
   stdout, stderr = process.communicate()
   process.wait()
@@ -86,7 +86,7 @@ def official_conll_eval(gold_path, predicted_path, metric, official_stdout=False
   if official_stdout:
     print("Official result for {}".format(metric))
     print(stdout)
-
+  import pdb; pdb.set_trace()
   coref_results_match = re.match(COREF_RESULTS_REGEX, stdout)
   recall = float(coref_results_match.group(1))
   precision = float(coref_results_match.group(2))
