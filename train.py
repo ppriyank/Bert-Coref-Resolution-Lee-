@@ -18,7 +18,6 @@ if __name__ == "__main__":
 
   report_frequency = config["report_frequency"]
   eval_frequency = config["eval_frequency"]
-  eval_frequency = 1
   model = cm.CorefModel(config)
   saver = tf.train.Saver()
 
@@ -41,8 +40,8 @@ if __name__ == "__main__":
       saver.restore(session, ckpt.model_checkpoint_path)
 
     initial_time = time.time()
-    log.info("We're reporting with frequency: %d" % report_frequency)
-    log.info"We're reporting with eval frequency: %d" % eval_frequency)
+    print("We're reporting with frequency: %d" % report_frequency)
+    print("We're reporting with eval frequency: %d" % eval_frequency)
     while True:
         tf_loss, tf_global_step, _  = session.run([model.loss, model.global_step1, model.train_op])
         accumulated_loss += tf_loss
@@ -52,13 +51,13 @@ if __name__ == "__main__":
           steps_per_second = tf_global_step / total_time
 
           average_loss = accumulated_loss / report_frequency
-          log.info("Coreference [{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_loss[0], steps_per_second))
+          print("Coreference [{}] loss={:.2f}, steps/s={:.2f}".format(tf_global_step, average_loss[0], steps_per_second))
           writer.add_summary(util.make_summary({"loss": average_loss}), tf_global_step)
           accumulated_loss = 0.0
     
         if tf_global_step % eval_frequency  == 0:
           #saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
-          eval_summary, eval_f1 = model.evaluate(session)
+          eval_summary, eval_f1, swag_accuracy = model.evaluate(session)
           if eval_f1 > max_f1:
             saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
             max_f1 = eval_f1
@@ -67,5 +66,6 @@ if __name__ == "__main__":
           writer.add_summary(eval_summary, tf_global_step)
           writer.add_summary(util.make_summary({"max_eval_f1": max_f1}), tf_global_step)
 
-          log.info("[{}] evaL_f1={:.2f}, max_f1={:.2f}".format(tf_global_step, eval_f1, max_f1))
+          print("[{}] evaL_f1={:.2f}, max_f1={:.2f}, swag_acc = {:.2f}".format(tf_global_step, eval_f1, max_f1, swag_accuracy))
+
       

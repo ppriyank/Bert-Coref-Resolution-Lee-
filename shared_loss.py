@@ -723,4 +723,4 @@ class CorefModel(object):
         print("Now evaluating SWAG")
         swag_accuracy = self.swag_evaluation(swag_predictions, swag_labels)
         print("Average SWAG accuracy is : {:.2f}%".format(swag_accuracy * 100))
-        return util.make_summary(summary_dict), average_f1
+        return util.make_summary(summary_dict), average_f1, swag_accuracy
