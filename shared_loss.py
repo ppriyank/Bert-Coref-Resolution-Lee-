@@ -708,11 +708,15 @@ class CorefModel(object):
 
         #. and now you getthe predictiosn basically. 
         summary_dict = {}
-        conll_results = conll.evaluate_conll(self.config["conll_eval_path"], coref_predictions, official_stdout)
-        average_f1 = sum(results["f"] for results in conll_results.values()) / len(conll_results)
+        try:
+            conll_results = conll.evaluate_conll(self.config["conll_eval_path"], coref_predictions, official_stdout)
+            average_f1 = sum(results["f"] for results in conll_results.values()) / len(conll_results)
 
-        summary_dict["Average F1 (conll)"] = average_f1
-        print("Average F1 (conll): {:.2f}%".format(average_f1))
+            summary_dict["Average F1 (conll)"] = average_f1
+            print("Average F1 (conll): {:.2f}%".format(average_f1))
+        except:
+            print("unstable results")
+            average_f1 = "not calculated - unstable"
         p,r,f = coref_evaluator.get_prf()
         summary_dict["Average F1 (py)"] = f
         print("Average F1 (py): {:.2f}%".format(f * 100))

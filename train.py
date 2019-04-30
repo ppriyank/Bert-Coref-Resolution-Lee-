@@ -25,7 +25,7 @@ if __name__ == "__main__":
   writer = tf.summary.FileWriter(log_dir, flush_secs=20)
 
   max_f1 = 0
-  
+  max_swag_acc = 0 
   with tf.Session() as session:
     #session = tf_debug.LocalCLIDebugWrapperSession(session)
     session.run(tf.global_variables_initializer())
@@ -62,9 +62,13 @@ if __name__ == "__main__":
             saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
             max_f1 = eval_f1
             util.copy_checkpoint(os.path.join(log_dir, "model-{}".format(tf_global_step)), os.path.join(log_dir, "model.max.ckpt"))
+          if swag_accuracy> max_swag_acc:
+            saver.save(session, os.path.join(log_dir, "model"), global_step=tf_global_step)
+            max_swag_acc = swag_accuracy
+            util.copy_checkpoint(os.path.join(log_dir, "model-{}".format(tf_global_step)), os.path.join(log_dir, "model.max.ckpt"))
 
           writer.add_summary(eval_summary, tf_global_step)
-          writer.add_summary(util.make_summary({"max_eval_f1": max_f1}), tf_global_step)
+          writer.add_summary(util.make_summary({"max_eval_f1": max_f1, "max swag accuracy": swag_accuracy}), tf_global_step)
 
           print("[{}] evaL_f1={:.2f}, max_f1={:.2f}, swag_acc = {:.2f}".format(tf_global_step, eval_f1, max_f1, swag_accuracy))
 
