@@ -716,7 +716,7 @@ class CorefModel(object):
             print("Average F1 (conll): {:.2f}%".format(average_f1))
         except:
             print("unstable results")
-            average_f1 = "not calculated - unstable"
+            average_f1 = 0
         p,r,f = coref_evaluator.get_prf()
         summary_dict["Average F1 (py)"] = f
         print("Average F1 (py): {:.2f}%".format(f * 100))
