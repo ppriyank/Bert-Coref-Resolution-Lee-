@@ -1,7 +1,7 @@
 # Bert-Coref-Resolution-Lee-
 A replicate of Official github of End-to-end Neural Coreference Resolution  
 (https://arxiv.org/pdf/1707.07045.pdf)  
-(https://github.com/kentonl/e2e-coref)  
+Use  this for setting  up the requrements and preparing  glove vectors/Elmo(https://github.com/kentonl/e2e-coref)  
 
 
 #bert_end_2_end.py
