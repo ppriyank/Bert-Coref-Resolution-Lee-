@@ -18,70 +18,75 @@ import util
 import coref_ops
 import conll
 import metrics
+from os import listdir
+from os.path import isfile, join
+import random 
 
 class CorefModel(object):
-  def __init__(self, config):
-    self.config = config
-    self.context_embeddings = util.EmbeddingDictionary(config["context_embeddings"])
-    self.head_embeddings = util.EmbeddingDictionary(config["head_embeddings"], maybe_cache=self.context_embeddings)
-    self.char_embedding_size = config["char_embedding_size"]
-    self.char_dict = util.load_char_dict(config["char_vocab_path"])
-    self.max_span_width = config["max_span_width"]
-    self.genres = { g:i for i,g in enumerate(config["genres"]) }
-    if config["lm_path"]:
-      self.lm_file = h5py.File(self.config["lm_path"], "r")
-    else:
-      self.lm_file = None
-    self.lm_layers = self.config["lm_layers"]
-    self.lm_size = self.config["lm_size"]
-    self.eval_data = None # Load eval data lazily.
-    
-    
-    self.eval_data = None # Load eval data lazily.
+    def __init__(self, config):
+        self.config = config
+        self.context_embeddings = util.EmbeddingDictionary(config["context_embeddings"])
+        self.head_embeddings = util.EmbeddingDictionary(config["head_embeddings"], maybe_cache=self.context_embeddings)
+        self.char_embedding_size = config["char_embedding_size"]
+        self.char_dict = util.load_char_dict(config["char_vocab_path"])
+        self.max_span_width = config["max_span_width"]
+        self.genres = { g:i for i,g in enumerate(config["genres"]) }
+        if config["lm_path"]:
+            self.config["lm_path"] = "/scratch/pp1953/dataset/elmo_cache.hdf5"
+            self.lm_file = h5py.File(self.config["lm_path"], "r")
+        else:
+            self.lm_file = None
+        self.lm_layers = self.config["lm_layers"]
+        self.lm_size = self.config["lm_size"]
+        self.eval_data = None # Load eval data lazily.
+        self.swag_train_dir = config["swag_train_dir"]
+        self.swag_val_dir = config["swag_val_dir"]
 
-    input_props = []
-    input_props.append((tf.string, [None, None])) # Tokens.
-    input_props.append((tf.float32, [None, None, 1024])) # Context embeddings.
-    input_props.append((tf.float32, [None, None, 1024])) # Head embeddings.
-    input_props.append((tf.float32, [None, None, self.lm_size, self.lm_layers])) # LM embeddings.
-    input_props.append((tf.int32, [None])) # Text lengths.
-    input_props.append((tf.bool, [])) # Is training.
-    input_props.append((tf.int32, [None])) # Gold starts.
-    input_props.append((tf.int32, [None])) # Gold ends.
-    input_props.append((tf.int32, [None])) # Cluster ids.
+        self.eval_data = None # Load eval data lazily.
 
-    # SWAG
-    input_props.append((tf.float32, [None, None, 1024])) # sentence embeddings
-    input_props.append((tf.int32, [None]))  # text length
-    input_props.append((tf.int32, [1, 5])) # the labe
+        input_props = []
+        input_props.append((tf.string, [None, None])) # Tokens.
+        input_props.append((tf.float32, [None, None, 1024])) # Context embeddings.
+        input_props.append((tf.float32, [None, None, 1024])) # Head embeddings.
+        input_props.append((tf.float32, [None, None, self.lm_size, self.lm_layers])) # LM embeddings.
+        input_props.append((tf.int32, [None])) # Text lengths.
+        input_props.append((tf.bool, [])) # Is training.
+        input_props.append((tf.int32, [None])) # Gold starts.
+        input_props.append((tf.int32, [None])) # Gold ends.
+        input_props.append((tf.int32, [None])) # Cluster ids.
 
-    self.queue_input_tensors = [tf.placeholder(dtype, shape) for dtype, shape in input_props]
-    self.swag_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_train_dir, f))])
-    self.swag_test_embeddings = iter([f for f in listdir(self.swag_val_dir) if isfile(join(self.swag_val_dir, f))])
-    dtypes, shapes = zip(*input_props)
-    queue = tf.PaddingFIFOQueue(capacity=10, dtypes=dtypes, shapes=shapes)
-    self.enqueue_op = queue.enqueue(self.queue_input_tensors)
-    self.input_tensors = queue.dequeue()
+        # SWAG
+        input_props.append((tf.float32, [None, None, 1024])) # sentence embeddings
+        input_props.append((tf.int32, [None]))  # text length
+        input_props.append((tf.int32, [1, 5])) # the labe
 
-    self.swag_predictions, self.multitask_loss1 = self.get_predictions_and_loss_cm(*self.input_tensors)
-    self.multitask_loss1 = self.multitask_loss1 /10
-    self.global_step1 = tf.Variable(0, name="global_step", trainable=False)
-    self.reset_global_step1 = tf.assign(self.global_step1, 0)
-    learning_rate1= tf.train.exponential_decay(self.config["learning_rate"], self.global_step1,
-                                               self.config["decay_frequency"], self.config["decay_rate"], staircase=True)
-    optimizers1 = {
-      "adam" : tf.train.AdamOptimizer,
-      "sgd" : tf.train.GradientDescentOptimizer
-    }
-    optimizer1 = optimizers1[self.config["optimizer"]](learning_rate1)
-    
-    self.predictions2, self.loss2 = self.get_predictions_and_loss(*self.input_tensors)
-    self.loss = self.loss2 + self.multitask_loss1 
-    trainable_params1 = tf.trainable_variables()
-    gradients1 = tf.gradients(self.loss, trainable_params1)
-    gradients1, _ = tf.clip_by_global_norm(gradients1, self.config["max_gradient_norm"])
-    
-    self.train_op = optimizer1.apply_gradients(zip(gradients1, trainable_params1), global_step=self.global_step1)
+        self.queue_input_tensors = [tf.placeholder(dtype, shape) for dtype, shape in input_props]
+        self.swag_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_train_dir, f))])
+        self.swag_test_embeddings = iter([f for f in listdir(self.swag_val_dir) if isfile(join(self.swag_val_dir, f))])
+        dtypes, shapes = zip(*input_props)
+        queue = tf.PaddingFIFOQueue(capacity=10, dtypes=dtypes, shapes=shapes)
+        self.enqueue_op = queue.enqueue(self.queue_input_tensors)
+        self.input_tensors = queue.dequeue()
+
+        self.swag_predictions, self.multitask_loss1 = self.get_predictions_and_loss_cm(*self.input_tensors)
+        self.multitask_loss1 = self.multitask_loss1 /10
+        self.global_step1 = tf.Variable(0, name="global_step", trainable=False)
+        self.reset_global_step1 = tf.assign(self.global_step1, 0)
+        learning_rate1= tf.train.exponential_decay(self.config["learning_rate"], self.global_step1,
+                                                   self.config["decay_frequency"], self.config["decay_rate"], staircase=True)
+        optimizers1 = {
+          "adam" : tf.train.AdamOptimizer,
+          "sgd" : tf.train.GradientDescentOptimizer
+        }
+        optimizer1 = optimizers1[self.config["optimizer"]](learning_rate1)
+        
+        self.predictions2, self.loss2 = self.get_predictions_and_loss(*self.input_tensors)
+        self.loss = self.loss2 + self.multitask_loss1 
+        trainable_params1 = tf.trainable_variables()
+        gradients1 = tf.gradients(self.loss, trainable_params1)
+        gradients1, _ = tf.clip_by_global_norm(gradients1, self.config["max_gradient_norm"])
+        
+        self.train_op = optimizer1.apply_gradients(zip(gradients1, trainable_params1), global_step=self.global_step1)
 
     def start_enqueue_thread(self, session):
         with open(self.config["train_path"], 'rb') as handle:
@@ -128,7 +133,14 @@ class CorefModel(object):
             starts, ends, labels = zip(*tuples)
         else:
             starts, ends, labels = [], [], []
-    return np.array(starts), np.array(ends), np.array([label_dict[c] for c in labels])
+        return np.array(starts), np.array(ends), np.array([label_dict[c] for c in labels])
+
+
+    def same(self ,is_training):
+        self.dropout = self.get_dropout(self.config["dropout_rate"], is_training)
+        self.lexical_dropout = self.get_dropout(self.config["lexical_dropout_rate"], is_training)
+        self.lstm_dropout = self.get_dropout(self.config["lstm_dropout_rate"], is_training)
+
 
     def tensorize_example(self, example, is_training):
         clusters = example["clusters"]
@@ -171,11 +183,18 @@ class CorefModel(object):
 
         lm_emb = self.load_lm_embeddings(doc_key)
         if is_training:
-            embedding = self.train_file[file_name]["embd"][...]
-            swag_file = next(self.swag_embeddings)
+            try:
+                swag_file = next(self.swag_embeddings)
+            except:
+                self.swag_embeddings = iter([f for f in listdir(self.swag_train_dir) if isfile(join(self.swag_train_dir, f))])
+                swag_file = next(self.swag_embeddings)
+        
         else:
-            embedding = self.test_file[file_name]["embd"][...]
-            swag_file = next(self.swag_embeddings)  
+            try:
+                swag_file = next(self.swag_embeddings)  
+            except:
+                self.swag_test_embeddings = iter([f for f in listdir(self.swag_val_dir) if isfile(join(self.swag_val_dir, f))])
+                swag_file = next(self.swag_test_embeddings)  
 
         startphrase = swag_embedding["startphrase"]
         gold_ending = swag_embedding["gold-ending"]
@@ -204,7 +223,6 @@ class CorefModel(object):
         for i, sentence in enumerate(swag_sentences):
             for j, word in enumerate(sentence[0]):
                 swag_context_word_emb[i, j] = word
-
 
         example_tensors = (tokens, context_word_emb, head_word_emb, lm_emb, text_len, \
             is_training, gold_starts, gold_ends, cluster_ids, swag_context_word_emb, swag_text_len, \
@@ -458,38 +476,38 @@ class CorefModel(object):
 
         return [candidate_starts, candidate_ends, candidate_mention_scores, top_span_starts, top_span_ends, top_antecedents, top_antecedent_scores], loss
 
-        def get_span_emb(self, head_emb, context_outputs, span_starts, span_ends):
-            span_emb_list = []
+    def get_span_emb(self, head_emb, context_outputs, span_starts, span_ends):
+        span_emb_list = []
 
-            span_start_emb = tf.gather(context_outputs, span_starts) # [k, emb]
-            span_emb_list.append(span_start_emb)
+        span_start_emb = tf.gather(context_outputs, span_starts) # [k, emb]
+        span_emb_list.append(span_start_emb)
 
-            span_end_emb = tf.gather(context_outputs, span_ends) # [k, emb]
-            span_emb_list.append(span_end_emb)
+        span_end_emb = tf.gather(context_outputs, span_ends) # [k, emb]
+        span_emb_list.append(span_end_emb)
 
-            span_width = 1 + span_ends - span_starts # [k]
+        span_width = 1 + span_ends - span_starts # [k]
 
-            if self.config["use_features"]:
-                span_width_index = span_width - 1 # [k]
-                span_width_emb = tf.gather(tf.get_variable("span_width_embeddings", [self.config["max_span_width"], self.config["feature_size"]]), span_width_index) # [k, emb]
-                span_width_emb = tf.nn.dropout(span_width_emb, self.dropout)
-                span_emb_list.append(span_width_emb)
+        if self.config["use_features"]:
+            span_width_index = span_width - 1 # [k]
+            span_width_emb = tf.gather(tf.get_variable("span_width_embeddings", [self.config["max_span_width"], self.config["feature_size"]]), span_width_index) # [k, emb]
+            span_width_emb = tf.nn.dropout(span_width_emb, self.dropout)
+            span_emb_list.append(span_width_emb)
 
-            if self.config["model_heads"]:
-                span_indices = tf.expand_dims(tf.range(self.config["max_span_width"]), 0) + tf.expand_dims(span_starts, 1) # [k, max_span_width]
-                span_indices = tf.minimum(util.shape(context_outputs, 0) - 1, span_indices) # [k, max_span_width]
-                span_text_emb = tf.gather(head_emb, span_indices) # [k, max_span_width, emb]
-                with tf.variable_scope("head_scores"):
-                    self.head_scores = util.projection(context_outputs, 1) # [num_words, 1]
-                span_head_scores = tf.gather(self.head_scores, span_indices) # [k, max_span_width, 1]
-                span_mask = tf.expand_dims(tf.sequence_mask(span_width, self.config["max_span_width"], dtype=tf.float32), 2) # [k, max_span_width, 1]
-                span_head_scores += tf.log(span_mask) # [k, max_span_width, 1]
-                span_attention = tf.nn.softmax(span_head_scores, 1) # [k, max_span_width, 1]
-                span_head_emb = tf.reduce_sum(span_attention * span_text_emb, 1) # [k, emb]
-                span_emb_list.append(span_head_emb)
+        if self.config["model_heads"]:
+            span_indices = tf.expand_dims(tf.range(self.config["max_span_width"]), 0) + tf.expand_dims(span_starts, 1) # [k, max_span_width]
+            span_indices = tf.minimum(util.shape(context_outputs, 0) - 1, span_indices) # [k, max_span_width]
+            span_text_emb = tf.gather(head_emb, span_indices) # [k, max_span_width, emb]
+            with tf.variable_scope("head_scores"):
+                self.head_scores = util.projection(context_outputs, 1) # [num_words, 1]
+            span_head_scores = tf.gather(self.head_scores, span_indices) # [k, max_span_width, 1]
+            span_mask = tf.expand_dims(tf.sequence_mask(span_width, self.config["max_span_width"], dtype=tf.float32), 2) # [k, max_span_width, 1]
+            span_head_scores += tf.log(span_mask) # [k, max_span_width, 1]
+            span_attention = tf.nn.softmax(span_head_scores, 1) # [k, max_span_width, 1]
+            span_head_emb = tf.reduce_sum(span_attention * span_text_emb, 1) # [k, emb]
+            span_emb_list.append(span_head_emb)
 
-            span_emb = tf.concat(span_emb_list, 1) # [k, emb]
-            return span_emb # [k, emb]
+        span_emb = tf.concat(span_emb_list, 1) # [k, emb]
+        return span_emb # [k, emb]
 
     def get_mention_scores(self, span_emb):
         with tf.variable_scope("mention_scores"):
