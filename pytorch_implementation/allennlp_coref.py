@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 #https://github.com/allenai/allennlp/blob/master/allennlp/data/dataset_readers/coreference_resolution/conll.py
     # and then add this corefern reoslutiotn Jiant. 
     # s
-@Model.register("coref")
+@Model.register("coref-bert")
 class CoreferenceResolver(Model):
     """
     This ``Model`` implements the coreference resolution model described "End-to-end Neural
@@ -79,19 +79,14 @@ class CoreferenceResolver(Model):
         super(CoreferenceResolver, self).__init__(vocab, regularizer)
 
         self._text_field_embedder = text_field_embedder
+
         self._context_layer = context_layer
         self._antecedent_feedforward = TimeDistributed(antecedent_feedforward)
-        feedforward_scorer = torch.nn.Sequential(
-                TimeDistributed(mention_feedforward),
-                TimeDistributed(torch.nn.Linear(mention_feedforward.get_output_dim(), 1)))
+        feedforward_scorer = torch.nn.Sequential(TimeDistributed(mention_feedforward), TimeDistributed(torch.nn.Linear(mention_feedforward.get_output_dim(), 1)))
         self._mention_pruner = Pruner(feedforward_scorer)
         self._antecedent_scorer = TimeDistributed(torch.nn.Linear(antecedent_feedforward.get_output_dim(), 1))
 
-        self._endpoint_span_extractor = EndpointSpanExtractor(context_layer.get_output_dim(),
-                                                              combination="x,y",
-                                                              num_width_embeddings=max_span_width,
-                                                              span_width_embedding_dim=feature_size,
-                                                              bucket_widths=False)
+        self._endpoint_span_extractor = EndpointSpanExtractor(context_layer.get_output_dim(),combination="x,y",num_width_embeddings=max_span_width,span_width_embedding_dim=feature_size, bucket_widths=False)
         self._attentive_span_extractor = SelfAttentiveSpanExtractor(input_dim=text_field_embedder.get_output_dim())
 
         # 10 possible distance buckets.
@@ -152,6 +147,11 @@ class CoreferenceResolver(Model):
         """
         # Shape: (batch_size, document_length, embedding_size)
         text_embeddings = self._lexical_dropout(self._text_field_embedder(text))
+
+        """
+        Do sliding window approach. 
+
+        """
 
         document_length = text_embeddings.size(1)
         num_spans = spans.size(1)
@@ -222,7 +222,7 @@ class CoreferenceResolver(Model):
 
         # Shapes:
         # (num_spans_to_keep, max_antecedents),
-        # (1, max_antecedents),
+        # (1, max_antecedents),d
         # (1, num_spans_to_keep, max_antecedents)
         valid_antecedent_indices, valid_antecedent_offsets, valid_antecedent_log_mask = \
             self._generate_valid_antecedents(num_spans_to_keep, max_antecedents, util.get_device_of(text_mask))
@@ -473,9 +473,7 @@ class CoreferenceResolver(Model):
         target_embeddings = top_span_embeddings.unsqueeze(2).expand_as(antecedent_embeddings)
 
         # Shape: (1, max_antecedents, embedding_size)
-        antecedent_distance_embeddings = self._distance_embedding(
-                util.bucket_values(antecedent_offsets,
-                                   num_total_buckets=self._num_distance_buckets))
+        antecedent_distance_embeddings = self._distance_embedding(util.bucket_values(antecedent_offsets,num_total_buckets=self._num_distance_buckets))
 
         # Shape: (1, 1, max_antecedents, embedding_size)
         antecedent_distance_embeddings = antecedent_distance_embeddings.unsqueeze(0)
@@ -564,8 +562,7 @@ class CoreferenceResolver(Model):
             we considered.
         """
         # Shape: (batch_size, num_spans_to_keep, max_antecedents)
-        antecedent_scores = self._antecedent_scorer(
-                self._antecedent_feedforward(pairwise_embeddings)).squeeze(-1)
+        antecedent_scores = self._antecedent_scorer(self._antecedent_feedforward(pairwise_embeddings)).squeeze(-1)
         antecedent_scores += top_span_mention_scores + antecedent_mention_scores
         antecedent_scores += antecedent_log_mask
 
