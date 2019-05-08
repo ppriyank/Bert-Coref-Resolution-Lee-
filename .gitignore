@@ -1,9 +1,0 @@
-bert_file/*
-*.jsonlines
-*.pickle
-dev.*
-*.txt
-*.so
-*.hdf5
-*.conf
-logs/best/*
