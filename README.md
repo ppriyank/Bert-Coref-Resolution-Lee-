@@ -8,5 +8,5 @@ Use  this for setting  up the requrements and preparing  glove vectors/Elmo(http
 
 Replaced bert model to generate embedings at run time to replace glove vectors and  elmo vectors in original paper  
 
-Since Bert works in sequences, and original code is written using sentences as chunks, the sequence is converted into run time  splits of sesntences.  For detailed explanation go  to line  #323. 
+Since Bert works in sequences, and original code is written using sentences as chunks, the sequence is converted into run time  splits of sesntences.  For detailed explanation go  to line  #323.  
 For easier explanation of tensorflow code go to  https://stackoverflow.com/questions/34970582/using-a-variable-for-num-splits-for-tf-split/56015552#56015552 (my own answer)
