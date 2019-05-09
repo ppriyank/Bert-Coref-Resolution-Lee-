@@ -5,7 +5,6 @@ This is the BERT part of the ELMo.
 import torch 
 import allennlp
 from allennlp.data.dataset_readers.coreference_resolution.conll import ConllCorefReader
-from swag_model import SWAGExampleModel
 from conll_coref_reader_bert import ConllCorefBertReader
 from swag_reader import SWAGDatasetReader
 #present in allennlp 0.8.4
@@ -31,6 +30,7 @@ from pytorch_pretrained_bert.modeling import BertModel
 from typing import Dict
 import torch.nn as nn
 import pickle
+import copy
 from pytorch_pretrained_bert.optimization import BertAdam
 
 import logging as log
@@ -139,7 +139,7 @@ def train_only_lee():
 
     lr = 0.00001
     batch_size = 2
-    epochs = 10 
+    epochs = 100
     max_seq_len = 512
     max_span_width = 30
     #token_indexer = BertIndexer(pretrained_model="bert-base-uncased", max_pieces=max_seq_len, do_lowercase=True,)
@@ -170,6 +170,8 @@ def train_only_lee():
     iterator = BasicIterator(batch_size=batch_size)
     iterator.index_with(vocab)
 
+    val_iterator = BasicIterator(batch_size=batch_size)
+    val_iterator.index_with(vocab)
     from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 
     bert_embedder = PretrainedBertEmbedder(
@@ -202,12 +204,18 @@ def train_only_lee():
         model=model,
         optimizer=optimizer,
         iterator=iterator,
+        validation_iterator = val_iterator, 
         train_dataset=train_ds,
+        validation_dataset = val_ds, 
+        validation_metric = "+coref_f1",
         cuda_device=0 if USE_GPU else -1,
         num_epochs=epochs,
     )    
 
     metrics = trainer.train()
+    # save the model
+    with open("/beegfs/yp913/Bert-Coref-Resolution-Lee-/saved_mdels/current_run_model_state", 'wb') as f:
+        torch.save(model.state_dict(), f)
 
 def load_datasets(conll_reader, swag_reader, path):
     swag_reader_dir =  Path(path+"processed/swag/")
@@ -268,8 +276,14 @@ def multitask_learning():
     conll_datasets, swag_datasets = load_datasets(conll_reader, swag_reader, directory)
     import pdb; pdb.set_trace()
     conll_vocab = Vocabulary()
+    swag_vocab = Vocabulary()
     conll_iterator = BasicIterator(batch_size=batch_size)
-    iterator.index_with(conll_vocab)
+    conlliterator.index_with(conll_vocab)
+
+    swag_vocab = Vocabulary()
+    swag_iterator = BasicIterator(batch_size=batch_size)
+    swag_iterator.index_with(swag_vocab)
+
 
     from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 
@@ -286,20 +300,23 @@ def multitask_learning():
     antecedent_feedforward = FeedForward(input_dim = 6576, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
 
     model1 = CoreferenceResolver(vocab=conll_vocab, text_field_embedder=word_embedding,context_layer= seq2seq, mention_feedforward=mention_feedforward,antecedent_feedforward=antecedent_feedforward , feature_size=768,max_span_width=max_span_width,spans_per_word=0.4,max_antecedents=250,lexical_dropout= 0.2)
-    model2 = SWAGExampleModel(vocab=swag_vocab, text_field_embedder=word_embedding, startphrase)
+
+    model2 = SWAGExampleModel(vocab=swag_vocab, text_field_embedder=word_embedding)
     optimizer1 = optim.Adam(model1.parameters(), lr=lr)
     optimizer2 = optim.Adam(model2.parameters(), lr=lr)
 
+    swag_train_iterator = swag_iterator(swag_datasets[0], num_epochs=1, shuffle=True)
+    conll_train_iterator = conll_iterator(conll_datasets[0], num_epochs=1, shuffle=True)
+    swag_val_iterator = swag_iterator(swag_datasets[1], num_epochs=1, shuffle=True)
+    conll_val_iterator:q = conll_iterator(conll_datasets[1], num_epochs=1, shuffle=True)
+    task_infos = {"swag": {"model": model2, "optimizer": optimizer2, "iterator": swag_iterator, "train_data": swag_datasets[0], "val_data": swag_datasets[1], "lr": lr, "score": {"f1":0.0}}, \
+                    "lee": {"model": model1, "iterator": conll_iterator, "val_data": conll_datasets[1], "train_data": conll_datasets[0], "optimizer": optimizer1, "lr": lr, "score": {"coref_prediction": 0.0, "coref_recall": 0.0, "coref_f1": 0.0,"mention_recall": 0.0}}}
     USE_GPU = 1
-    trainer = Trainer(
-        model=model,
-        optimizer=optimizer,
-        iterator=iterator,
-        train_dataset=train_ds,
+    trainer = MultiTaskTrainer(
+        iterator=task_infos, 
         cuda_device=0 if USE_GPU else -1,
         num_epochs=epochs,
     ) 
-    # then create a round robin of the batches for multitask-training.
     metrics = trainer.train()
 
-multitask_learning()
+train_only_lee()

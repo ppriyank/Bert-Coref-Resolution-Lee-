@@ -105,6 +105,9 @@ class CoreferenceResolver(Model):
             self._lexical_dropout = lambda x: x
         initializer(self)
 
+    def return_context_layer(self):
+        return self._context_layer
+        
     @overrides
     def forward(self,  # type: ignore
                 text: Dict[str, torch.LongTensor],

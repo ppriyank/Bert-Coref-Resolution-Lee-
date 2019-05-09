@@ -13,7 +13,7 @@ from allennlp.data.token_indexers import SingleIdTokenIndexer, TokenIndexer
 from allennlp.data.dataset_readers.dataset_utils import Ontonotes, enumerate_spans
 from allennlp.data.token_indexers.wordpiece_indexer import PretrainedBertIndexer
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
-
+import copy
 
 def canonicalize_clusters(clusters: DefaultDict[int, List[Tuple[int, int]]]) -> List[List[Tuple[int, int]]]:
     """
@@ -76,7 +76,7 @@ class ConllCorefBertReader(DatasetReader):
         super().__init__(lazy)
         self._max_span_width = max_span_width
         self._token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
-        self.token_indexer = token_indexer = PretrainedBertIndexer("bert-large-uncased", do_lowercase=True)
+        self.token_indexer = token_indexer = PretrainedBertIndexer("bert-base-cased", do_lowercase=False)
     @overrides
     def _read(self, file_path: str):
         # if `file_path` is a URL, redirect to the cache
@@ -107,6 +107,25 @@ class ConllCorefBertReader(DatasetReader):
                 continue
             yield self.text_to_instance([s.words for s in sentences], canonical_clusters)
 
+    def align_token(self, text, span):
+        """
+        Retokenize one span for one individual span.
+        """
+        current = self.token_indexer.wordpiece_tokenizer(" ".join(text[:span[0]]))
+        start_span = len(current)
+        span_embedding = self.token_indexer.wordpiece_tokenizer(" ".join(text[span[0]:span[1]]))
+        end_span = start_span + len(span_embedding)
+        return start_span, end_span
+
+    def align_clusters_to_tokens(self, text, clusters):
+        new_clusters = []
+        for cluster in clusters:
+            new_cluster = []
+            for span in cluster:
+                new_cluster.append(self.align_token(text, span))
+            new_clusters.append(new_cluster)
+        return new_clusters
+
     @overrides
     def text_to_instance(self,  # type: ignore
                          sentences: List[List[str]],
@@ -136,6 +155,8 @@ class ConllCorefBertReader(DatasetReader):
                  with respect to the ``spans ``ListField``.
         """
         flattened_sentences = [self._normalize_word(word) for sentence in sentences for word in sentence]
+        # align clusters
+        gold_clusters = self.align_clusters_to_tokens(flattened_sentences, gold_clusters)
         def tokenizer(s: str):
             return self.token_indexer.wordpiece_tokenizer(s)
         # we nee dto try this with the other one. 
@@ -143,7 +164,7 @@ class ConllCorefBertReader(DatasetReader):
         metadata: Dict[str, Any] = {"original_text": flattened_sentences}
         if gold_clusters is not None:
             metadata["clusters"] = gold_clusters
-        # make 
+        
         text_field = TextField([Token(word) for word in flattened_sentences], self._token_indexers)
 
         cluster_dict = {}
@@ -157,6 +178,7 @@ class ConllCorefBertReader(DatasetReader):
         sentence_offset = 0
         normal = []
         for sentence in sentences:
+            # enumerate the spans.
             for start, end in enumerate_spans(sentence,
                                               offset=sentence_offset,
                                               max_span_width=self._max_span_width):
