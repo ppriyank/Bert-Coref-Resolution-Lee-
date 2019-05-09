@@ -5,7 +5,7 @@ Use  this for setting  up the requrements and preparing  glove vectors/Elmo(http
 
 For setting up the prince cluster to  support running the scripts : follow : https://github.com/ppriyank/Prince-Set-UP
 
-#bert_end_2_end.py
+#bert_end_2_end.py & train-bert_end2end.py
 
 Replaced bert model to generate embedings at run time to replace glove vectors and  elmo vectors in original paper  
 
