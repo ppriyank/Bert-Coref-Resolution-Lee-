@@ -177,7 +177,7 @@ def main():
     word_embedding = BasicTextFieldEmbedder({"tokens": bert_embedder}, allow_unmatched_keys = True)
     BERT_DIM = word_embedding.get_output_dim()
 
-    seq2seq = PytorchSeq2SeqWrapper(torch.nn.LSTM(BERT_DIM, HIDDEN_DIM, batch_first=True))
+    seq2seq = PytorchSeq2SeqWrapper(torch.nn.LSTM(BERT_DIM, HIDDEN_DIM, batch_first=True, bidirectional=True))
     mention_feedforward = FeedForward(input_dim = 1936, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
     antecedent_feedforward = FeedForward(input_dim = 6576, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
 
