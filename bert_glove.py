@@ -32,8 +32,16 @@ class CorefModel(object):
     seq_length = 502
     self.max_sentence_length = 263
     self.max_sentence_no = 90
-    
+
+    with open('../files/train_inv_mapping.pickle', 'rb') as handle:
+    	self.inv_mapping_train = pickle.load(handle)
+
+    with open('../files/test_inv_mapping.pickle', 'rb') as handle:
+    	self.inv_mapping_test = pickle.load(handle)
+
     self.config = config
+    self.context_embeddings = util.EmbeddingDictionary(config["context_embeddings"])
+    self.head_embeddings = util.EmbeddingDictionary(config["head_embeddings"], maybe_cache=self.context_embeddings)
     self.char_embedding_size = config["char_embedding_size"]
     self.char_dict = util.load_char_dict(config["char_vocab_path"])
     self.max_span_width = config["max_span_width"]
@@ -70,7 +78,7 @@ class CorefModel(object):
         continue
       if var.name.split("/")[2][0] == "l":
         temp = var.name.split("/")[2][6:]
-        if int(temp) > 18:
+        if int(temp) > 22:
           self.usesful  += [var]
 
     self.usesful += [tvars[-1], tvars[-2]]
@@ -78,11 +86,12 @@ class CorefModel(object):
     embeddings = tf.concat([tf.expand_dims(all_layers[-1], 3),  tf.expand_dims(all_layers[-2], 3),  tf.expand_dims(all_layers[-3], 3),  tf.expand_dims(all_layers[-4], 3)],3)
     embeddings =  embeddings[:,1:501,:,:]
     embeddings = tf.reshape(embeddings , [500,1024,4])
-    self.yo = embeddings
     # <tf.Tensor 'strided_slice_4:0' shape=(1, 500, 1024, 4) dtype=float32>
     
     input_props = []
     input_props.append((tf.string, [None, None])) # Tokens.
+    input_props.append((tf.float32, [None, None, self.context_embeddings.size])) # Context embeddings.
+    input_props.append((tf.float32, [None, None, self.head_embeddings.size])) # Head embeddings.
     input_props.append((tf.int32, [None, None, None])) # Character indices.
     input_props.append((tf.int32, [None])) # Text lengths.
     input_props.append((tf.int32, [None])) # Speaker IDs.
@@ -92,6 +101,7 @@ class CorefModel(object):
     input_props.append((tf.int32, [None])) # Gold ends.
     input_props.append((tf.int32, [None])) # Cluster ids.
     input_props.append((tf.int32, [self.max_sentence_no])) # splits
+    input_props.append((tf.int32, [500])) # splits2
     input_props.append((tf.int32, [2])) # param
 
     # self.queue_input_tensors = [tf.placeholder(dtype, shape) for dtype, shape in input_props]
@@ -109,55 +119,43 @@ class CorefModel(object):
     self.global_step2 = tf.Variable(0, name="global_step", trainable=False)
     self.reset_global_step1 = tf.assign(self.global_step1, 0)
     self.reset_global_step2 = tf.assign(self.global_step2, 0)
-    
-    learning_rate1 = tf.train.exponential_decay(0.0001, self.global_step1,
-                                               self.config["decay_frequency"], self.config["decay_rate"], staircase=True)
+    learning_rate1 = tf.train.exponential_decay(0.00001, self.global_step1,
+                                           self.config["decay_frequency"], self.config["decay_rate"], staircase=True)
     learning_rate2 = tf.train.exponential_decay(self.config["learning_rate"], self.global_step2,
-                                               self.config["decay_frequency"], self.config["decay_rate"], staircase=True)
-    
+                                           self.config["decay_frequency"], self.config["decay_rate"], staircase=True)
     trainable_params = tf.trainable_variables()
     Lee_param = [] 
-    for  param in trainable_params :
-       temp  = param.name.split("/")[0] 
-       if "bert" == temp or temp == "context_word_emb:0" or temp== "head_word_emb:0" or temp== "total_embedding:0":
-          continue 
-       else:
-          Lee_param  += [param]
-    
+    for  param in trainable_params:
+    	temp  = param.name.split("/")[0]
+    	if "bert" == temp or temp == "context_word_emb:0" or temp== "head_word_emb:0" or temp== "total_embedding:0":
+    		continue
+    	else:
+    		Lee_param  += [param]
     gradients1 = tf.gradients(self.loss, self.usesful)
     gradients2 = tf.gradients(self.loss, Lee_param )
-    
     gradients1, _ = tf.clip_by_global_norm(gradients1, self.config["max_gradient_norm"])
     gradients2, _ = tf.clip_by_global_norm(gradients2, self.config["max_gradient_norm"])
-    
-    optimizers = {
-      "adam" : tf.train.AdamOptimizer,
-      "sgd" : tf.train.GradientDescentOptimizer
-    }
-
-
+    optimizers = { "adam" : tf.train.AdamOptimizer, "sgd" : tf.train.GradientDescentOptimizer}
     optimizer1 = tf.train.AdamOptimizer(learning_rate1)
-    optimizer2 = optimizers[self.config["optimizer"]](learning_rate2)
-
+    optimizer2 = optimizers[self.config["optimizer"]](learning_rate2)    
     self.train_op1 = optimizer1.apply_gradients(zip(gradients1, self.usesful), global_step=self.global_step1)
     self.train_op2 = optimizer2.apply_gradients(zip(gradients2, Lee_param), global_step=self.global_step2)
-
     self.train_op = tf.group(self.train_op1, self.train_op2)
 
   def start_enqueue_thread(self, session):
     with open(self.config["train_path"], 'rb') as handle:
         train_examples = pickle.load(handle)
-    def _enqueue_loop():
-      while True:
-        random.shuffle(train_examples)
-        for example in train_examples:
-          tensorized_example = self.tensorize_example(example, is_training=True)
-          self.tensorized_example = tensorized_example
-          feed_dict = dict(zip(self.queue_input_tensors, tensorized_example))
-          session.run(self.enqueue_op, feed_dict=feed_dict)
-    enqueue_thread = threading.Thread(target=_enqueue_loop)
-    enqueue_thread.daemon = True
-    enqueue_thread.start()
+    # def _enqueue_loop():
+    #   while True:
+    #     random.shuffle(train_examples)
+    #     for example in train_examples:
+    #       tensorized_example = self.tensorize_example(example, is_training=True)
+    #       self.tensorized_example = tensorized_example
+    #       feed_dict = dict(zip(self.queue_input_tensors, tensorized_example))
+    #       session.run(self.enqueue_op, feed_dict=feed_dict)
+    # enqueue_thread = threading.Thread(target=_enqueue_loop)
+    # enqueue_thread.daemon = True
+    # enqueue_thread.start()
 
   def restore(self, session):
     # Don't try to restore unused variables from the TF-Hub ELMo module.
@@ -198,9 +196,17 @@ class CorefModel(object):
     
   
   def tensorize_example(self, example, is_training):
+    
     clusters = example["clusters"]
+    file_name = example["doc_key"]
+    if is_training:
+    	inv_mapping = self.inv_mapping_train[file_name]
+    else:
+    	inv_mapping  = self.inv_mapping_test[file_name]
+    	
+   
 
-    sentences = example["sentences"]
+    sentences = example["bert"]
     bert_tokenized = []
     for S in sentences:
         bert_tokenized += S
@@ -229,6 +235,7 @@ class CorefModel(object):
     input_mask =  np.expand_dims(np.array(input_mask),0)
     input_type_ids =  np.expand_dims(np.array(input_type_ids),0)
     
+
     gold_mentions = sorted(tuple(m) for m in util.flatten(clusters))
     gold_mention_map = {m:i for i,m in enumerate(gold_mentions)}
     cluster_ids = np.zeros(len(gold_mentions))
@@ -236,11 +243,26 @@ class CorefModel(object):
       for mention in cluster:
         cluster_ids[gold_mention_map[tuple(mention)]] = cluster_id + 1
 
+
+
     sentences = example["sentences"]
     num_words = sum(len(s) for s in sentences)
     speakers = util.flatten(example["speakers"])
 
     assert num_words == len(speakers)
+
+    lengths = {}
+    for key in inv_mapping :
+    	c = inv_mapping[key]
+    	if c in lengths:
+    		lengths[c] += 1
+    	else:
+    		lengths[c] = 1
+    y=[]
+    for key in lengths:
+    	y += [lengths[key]]
+    y = y + [500-sum(y)] + [0 for i in range(500-1-len(y))]
+    y = np.array(y)
 
     max_sentence_length = max(len(s) for s in sentences)
     max_word_length = max(max(max(len(w) for w in s) for s in sentences), max(self.config["filter_widths"]))
@@ -249,11 +271,16 @@ class CorefModel(object):
     x = np.array(x)
     text_len = np.array(text_len)
 
+    context_word_emb = np.zeros([len(sentences), max_sentence_length, self.context_embeddings.size])
+    head_word_emb = np.zeros([len(sentences), max_sentence_length, self.head_embeddings.size])
+
     tokens = [[""] * max_sentence_length for _ in sentences]
     char_index = np.zeros([len(sentences), max_sentence_length, max_word_length])
     for i, sentence in enumerate(sentences):
       for j, word in enumerate(sentence):
         tokens[i][j] = word
+        context_word_emb[i, j] = self.context_embeddings[word]
+        head_word_emb[i, j] = self.head_embeddings[word]
         char_index[i, j, :len(word)] = [self.char_dict[c] for c in word]
     tokens = np.array(tokens)
 
@@ -264,8 +291,8 @@ class CorefModel(object):
     genre = self.genres[doc_key[:2]]
 
     gold_starts, gold_ends = self.tensorize_mentions(gold_mentions)
-    example_tensors = (input_ids ,input_mask , input_type_ids , tokens, char_index, text_len, speaker_ids, genre, is_training, gold_starts, gold_ends, cluster_ids,x , [len(text_len), max(text_len)] )
 
+    example_tensors = (input_ids ,input_mask , input_type_ids, tokens, context_word_emb, head_word_emb, char_index, text_len, speaker_ids, genre, is_training, gold_starts, gold_ends, cluster_ids, x , y, [len(text_len), max(text_len)])
     # if is_training and len(sentences) > self.config["max_training_sentences"]:
       # return self.truncate_example(*example_tensors)
     # else:
@@ -331,11 +358,19 @@ class CorefModel(object):
     top_fast_antecedent_scores += tf.log(tf.to_float(top_antecedents_mask)) # [k, c]
     return top_antecedents, top_antecedents_mask, top_fast_antecedent_scores, top_antecedent_offsets
 
-  def get_predictions_and_loss(self, tokens, char_index, text_len, speaker_ids, genre, is_training, gold_starts, gold_ends, cluster_ids  , splits,  param,  embeddings ):
+
+  def get_predictions_and_loss(self, tokens, context_word_emb, head_word_emb, char_index, text_len, speaker_ids, genre, is_training, gold_starts, gold_ends, cluster_ids , splits,  split2, param,  embeddings):
     self.dropout = self.get_dropout(self.config["dropout_rate"], is_training)
     self.lexical_dropout = self.get_dropout(self.config["lexical_dropout_rate"], is_training)
     self.lstm_dropout = self.get_dropout(self.config["lstm_dropout_rate"], is_training)
 
+    embedding_temp = tf.split(embeddings, num_or_size_splits=split2  , axis=0)
+    m = []
+    for t1 in embedding_temp:
+    	t1 = tf.reduce_mean(t1,0)
+    	t1  = tf.expand_dims(t1, 0)
+    	m += [t1]
+    m = tf.concat(m,0)
     embedding_temp = tf.split(embeddings, num_or_size_splits=splits  , axis=0)
     temp = tf.reduce_max(splits)
     m = []
@@ -348,13 +383,11 @@ class CorefModel(object):
     m  = tf.reshape(m, [self.max_sentence_no, -1,1024,4]) 
     embd = tf.gather(m, tf.range(param[0]))
     embd = tf.gather(embd, tf.range(param[1]) , axis=1 )
-    
-    
-    self.context_word_emb = tf.reduce_mean(embd,3)
-    context_word_emb  = self.context_word_emb 
-    head_word_emb = tf.reduce_mean(embd,3)
     lm_emb = embd 
-    # y=session.run(context_word_emb, feed_dict=feed_dict)
+    # self.c1= context_word_emb
+    # self.c2= head_word_emb
+    # self.c3 = embd
+    # # y=session.run(context_word_emb, feed_dict=feed_dict)
 
 
     num_sentences = tf.shape(tokens)[0]
@@ -371,15 +404,15 @@ class CorefModel(object):
       context_emb_list.append(aggregated_char_emb)
       head_emb_list.append(aggregated_char_emb)
 
-    if not self.lm_file:
-      elmo_module = hub.Module("https://tfhub.dev/google/elmo/2")
-      lm_embeddings = elmo_module(
-          inputs={"tokens": tokens, "sequence_len": text_len},
-          signature="tokens", as_dict=True)
-      word_emb = lm_embeddings["word_emb"]  # [num_sentences, max_sentence_length, 512]
-      lm_emb = tf.stack([tf.concat([word_emb, word_emb], -1),
-                         lm_embeddings["lstm_outputs1"],
-                         lm_embeddings["lstm_outputs2"]], -1)  # [num_sentences, max_sentence_length, 1024, 3]
+    # if not self.lm_file:
+    #   elmo_module = hub.Module("https://tfhub.dev/google/elmo/2")
+    #   lm_embeddings = elmo_module(
+    #       inputs={"tokens": tokens, "sequence_len": text_len},
+    #       signature="tokens", as_dict=True)
+    #   word_emb = lm_embeddings["word_emb"]  # [num_sentences, max_sentence_length, 512]
+    #   lm_emb = tf.stack([tf.concat([word_emb, word_emb], -1),
+    #                      lm_embeddings["lstm_outputs1"],
+    #                      lm_embeddings["lstm_outputs2"]], -1)  # [num_sentences, max_sentence_length, 1024, 3]
     lm_emb_size = util.shape(lm_emb, 2)
     lm_num_layers = util.shape(lm_emb, 3)
     with tf.variable_scope("lm_aggregation"):
@@ -681,7 +714,7 @@ class CorefModel(object):
         inv_map = inv_mapping[file_name]
         tensorized_example = self.tensorize_example(example, is_training=False)
         feed_dict = dict(zip(self.input_tensors, tensorized_example))
-        _, _, _,   _, _, _, _, _, _, gold_starts, gold_ends, _, _, _ = tensorized_example
+        _, _, _,   _, _, _, _, _, _, _, _, gold_starts, gold_ends, _, _, _ = tensorized_example
         # feed_dict = {i:t for i,t in zip(self.input_tensors, tensorized_example)}
         candidate_starts, candidate_ends, candidate_mention_scores, top_span_starts, top_span_ends, top_antecedents, top_antecedent_scores = session.run(self.predictions, feed_dict=feed_dict)
         top_span_starts = inv_map[top_span_starts]
