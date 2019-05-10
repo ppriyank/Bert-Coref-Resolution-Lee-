@@ -8,14 +8,16 @@ from allennlp.data.dataset_readers.coreference_resolution.conll import ConllCore
 from conll_coref_reader_bert import ConllCorefBertReader
 from swag_reader import SWAGDatasetReader
 #present in allennlp 0.8.4
+from multitask_sampling_trainer import  MultiTaskTrainer
 #import allennlp.data.token_indexers.wordpiece_indexer.PretrainedBertIndexer as BertIndexer
 from allennlp.data.token_indexers import SingleIdTokenIndexer
 from allennlp_coref import CoreferenceResolver
-
+from swag_model import SWAGExampleModel
 from allennlp.data.iterators import BucketIterator, BasicIterator
 from allennlp.data.vocabulary import Vocabulary
 from allennlp.modules.text_field_embedders import TextFieldEmbedder, BasicTextFieldEmbedder
 from allennlp.modules.seq2seq_encoders.seq2seq_encoder import Seq2SeqEncoder
+from allennlp.modules.seq2vec_encoders.seq2vec_encoder import Seq2VecEncoder
 from allennlp.training.trainer import Trainer
 from allennlp.modules import FeedForward
 from elmo_text_field_embedder import ElmoTextFieldEmbedder
@@ -23,6 +25,7 @@ from allennlp.modules.token_embedders import Embedding
 from allennlp.data.token_indexers.wordpiece_indexer import PretrainedBertIndexer
 import torch
 from allennlp.modules.seq2seq_encoders import PytorchSeq2SeqWrapper
+from allennlp.modules.seq2vec_encoders import PytorchSeq2VecWrapper
 from torch import optim
 from pathlib import Path
 from allennlp.modules.token_embedders.bert_token_embedder import BertEmbedder
@@ -82,7 +85,7 @@ class PretrainedBertEmbedder(BertEmbedder):
                 param.requires_grad = False
         super().__init__(bert_model=model, top_layer_only=top_layer_only)
 
-def load_model_state( model, state_path, gpu_id, skip_task_models=[], strict=True):
+def lt( model, state_path, gpu_id, skip_task_models=[], strict=True):
     ''' Helper function to load a model state
 
     Parameters
@@ -209,12 +212,13 @@ def train_only_lee():
         validation_dataset = val_ds, 
         validation_metric = "+coref_f1",
         cuda_device=0 if USE_GPU else -1,
+        serialization_dir="/beegfs/yp913/Bert-Coref-Resolution-Lee-/saved_models/current_run_model_state",
         num_epochs=epochs,
     )    
 
     metrics = trainer.train()
     # save the model
-    with open("/beegfs/yp913/Bert-Coref-Resolution-Lee-/saved_mdels/current_run_model_state", 'wb') as f:
+    with open("/beegfs/yp913/Bert-Coref-Resolution-Lee-/saved_models/current_run_model_state", 'wb') as f:
         torch.save(model.state_dict(), f)
 
 def load_datasets(conll_reader, swag_reader, path):
@@ -274,11 +278,10 @@ def multitask_learning():
     EMBEDDING_DIM = 1024
     HIDDEN_DIM = 200
     conll_datasets, swag_datasets = load_datasets(conll_reader, swag_reader, directory)
-    import pdb; pdb.set_trace()
     conll_vocab = Vocabulary()
     swag_vocab = Vocabulary()
     conll_iterator = BasicIterator(batch_size=batch_size)
-    conlliterator.index_with(conll_vocab)
+    conll_iterator.index_with(conll_vocab)
 
     swag_vocab = Vocabulary()
     swag_iterator = BasicIterator(batch_size=batch_size)
@@ -287,21 +290,18 @@ def multitask_learning():
 
     from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 
-    bert_embedder = PretrainedBertEmbedder(
-             pretrained_model="bert-base-cased",
-             top_layer_only=True, # conserve memory
-             requires_grad=True
-     )
-    word_embedding = BasicTextFieldEmbedder({"tokens": bert_embedder})
+    bert_embedder = PretrainedBertEmbedder(pretrained_model="bert-base-cased",top_layer_only=True, requires_grad=True)
+
+    word_embedding = BasicTextFieldEmbedder({"tokens": bert_embedder}, allow_unmatched_keys=True)
     BERT_DIM = word_embedding.get_output_dim()
 
     seq2seq = PytorchSeq2SeqWrapper(torch.nn.LSTM(BERT_DIM, HIDDEN_DIM, batch_first=True, bidirectional=True))
+    seq2vec = PytorchSeq2VecWrapper(torch.nn.LSTM(BERT_DIM, HIDDEN_DIM, batch_first=True, bidirectional=True))
     mention_feedforward = FeedForward(input_dim = 2336, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
-    antecedent_feedforward = FeedForward(input_dim = 6576, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
-
+    antecedent_feedforward = FeedForward(input_dim = 7776, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
     model1 = CoreferenceResolver(vocab=conll_vocab, text_field_embedder=word_embedding,context_layer= seq2seq, mention_feedforward=mention_feedforward,antecedent_feedforward=antecedent_feedforward , feature_size=768,max_span_width=max_span_width,spans_per_word=0.4,max_antecedents=250,lexical_dropout= 0.2)
 
-    model2 = SWAGExampleModel(vocab=swag_vocab, text_field_embedder=word_embedding)
+    model2 = SWAGExampleModel(vocab=swag_vocab, text_field_embedder=word_embedding, phrase_encoder=seq2vec)
     optimizer1 = optim.Adam(model1.parameters(), lr=lr)
     optimizer2 = optim.Adam(model2.parameters(), lr=lr)
 
@@ -309,14 +309,14 @@ def multitask_learning():
     conll_train_iterator = conll_iterator(conll_datasets[0], num_epochs=1, shuffle=True)
     swag_val_iterator = swag_iterator(swag_datasets[1], num_epochs=1, shuffle=True)
     conll_val_iterator:q = conll_iterator(conll_datasets[1], num_epochs=1, shuffle=True)
-    task_infos = {"swag": {"model": model2, "optimizer": optimizer2, "iterator": swag_iterator, "train_data": swag_datasets[0], "val_data": swag_datasets[1], "lr": lr, "score": {"f1":0.0}}, \
-                    "lee": {"model": model1, "iterator": conll_iterator, "val_data": conll_datasets[1], "train_data": conll_datasets[0], "optimizer": optimizer1, "lr": lr, "score": {"coref_prediction": 0.0, "coref_recall": 0.0, "coref_f1": 0.0,"mention_recall": 0.0}}}
+    task_infos = {"swag": {"model": model2, "optimizer": optimizer2, "loss": 0.0, "iterator": swag_iterator, "train_data": swag_datasets[0], "val_data": swag_datasets[1], "num_train": len(swag_datasets[0]),"lr": lr, "score": {"accuracy":0.0}}, \
+                    "lee": {"model": model1, "iterator": conll_iterator, "loss": 0.0, "val_data": conll_datasets[1], "train_data": conll_datasets[0], "optimizer": optimizer1, "num_train": len(conll_datasets[0]), "lr": lr, "score": {"coref_prediction": 0.0, "coref_recall": 0.0, "coref_f1": 0.0,"mention_recall": 0.0}}}
     USE_GPU = 1
     trainer = MultiTaskTrainer(
-        iterator=task_infos, 
-        cuda_device=0 if USE_GPU else -1,
+        task_infos=task_infos, 
         num_epochs=epochs,
+        serialization_dir="/beegfs/yp913/Bert-Coref-Resolution-Lee-/saved_models/multitask/"
     ) 
     metrics = trainer.train()
 
-train_only_lee()
+multitask_learning()

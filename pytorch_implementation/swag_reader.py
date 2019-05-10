@@ -45,9 +45,7 @@ class SWAGDatasetReader(DatasetReader):
     ) -> None:
         super().__init__(lazy)
         self.tokenizer = tokenizer or WordTokenizer()
-        self.token_indexers = token_indexers or {
-            'tokens': SingleIdTokenIndexer()
-        }
+        self.token_indexers = {"tokens": token_indexers} 
 
     @overrides
     def _read(self, file_path):
@@ -94,19 +92,8 @@ class SWAGDatasetReader(DatasetReader):
                 self.token_indexers)
         }
         if label is not None:
-            fields['label'] = LabelField(label)
+            fields['label'] = LabelField(int(label), skip_indexing=True)
 
         return Instance(fields)
 
-    @classmethod
-    def from_params(cls, params: Params) -> 'SWAGDatasetReader':
-        lazy = params.pop('lazy', False)
-        tokenizer = Tokenizer.from_params(params.pop('tokenizer', {}))
-        token_indexers = TokenIndexer.dict_from_params(
-            params.pop('token_indexers', {}))
-        params.assert_empty(cls.__name__)
-
-        return cls(
-            lazy=lazy,
-            tokenizer=tokenizer,
-            token_indexers=token_indexers)
+  

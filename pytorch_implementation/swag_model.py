@@ -17,14 +17,14 @@ from allennlp.modules import (
     TextFieldEmbedder)
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
 from allennlp.nn.util import get_text_field_mask
+from allennlp.modules import Seq2SeqEncoder
 from allennlp.training.metrics import CategoricalAccuracy
 import torch
-
+import torch.nn as nn
 
 logger = logging.getLogger(__name__)
 
 
-@Model.register('swagexample')
 class SWAGExampleModel(Model):
     """An example model for the SWAG dataset.
     This model predicts on the SWAG task by encoding the startphrase and
@@ -54,44 +54,25 @@ class SWAGExampleModel(Model):
             self,
             vocab: Vocabulary,
             text_field_embedder: TextFieldEmbedder,
-            startphrase_encoder: Seq2SeqEncoder, # this is the BiLSTM
-            ending_encoder: Seq2SeqEncoder,
-            similarity: SimilarityFunction,
-            initializer: InitializerApplicator,
-            regularizer: RegularizerApplicator = None
+            phrase_encoder: Seq2SeqEncoder, # this is the BiLSTM
     ) -> None:
-        super().__init__(vocab, regularizer)
+        super().__init__(vocab)
 
         # validate the configuration
         check_dimensions_match(
             text_field_embedder.get_output_dim(),
-            startphrase_encoder.get_input_dim(),
+            phrase_encoder.get_input_dim(),
             "text field embedding dim",
             "startphrase encoder input dim")
-        check_dimensions_match(
-            text_field_embedder.get_output_dim(),
-            ending_encoder.get_input_dim(),
-            "text field embedding dim",
-            "ending encoder input dim")
-        check_dimensions_match(
-            startphrase_encoder.get_output_dim(),
-            ending_encoder.get_output_dim(),
-            "startphrase embedding dim",
-            "ending embedding dim")
-
         # bind all attributes to the instance
         self.text_field_embedder = text_field_embedder
-        self.startphrase_encoder = startphrase_encoder
-        self.ending_encoder = ending_encoder
-        self.similarity = similarity
-
+        self.phrase_encoder = phrase_encoder
         # set the training and validation losses
         self.xentropy = torch.nn.CrossEntropyLoss()
         self.accuracy = CategoricalAccuracy()
 
-        # initialize all variables
-        initializer(self)
-
+    def return_context_layer(self):
+        return self.phrase_encoder
     def forward(
             self,
             startphrase: Dict[str, torch.LongTensor],
@@ -133,29 +114,25 @@ class SWAGExampleModel(Model):
         """
         # pass the startphrase and endings through the initial text
         # embedding
+        import pdb; pdb.set_trace()
         startphrase_initial = self.text_field_embedder(startphrase)
         ending0_initial = self.text_field_embedder(ending0)
         ending1_initial = self.text_field_embedder(ending1)
         ending2_initial = self.text_field_embedder(ending2)
         ending3_initial = self.text_field_embedder(ending3)
-
         # embed the startphrase and endings
-        startphrase_embedding = self.startphrase_encoder(
+        startphrase_embedding = self.phrase_encoder(
             startphrase_initial,
             get_text_field_mask(startphrase))
-        ending0_embedding = self.ending_encoder(
-            ending0_initial,
-            get_text_field_mask(ending0))
-        ending1_embedding = self.ending_encoder(
-            ending1_initial,
-            get_text_field_mask(ending1))
-        ending2_embedding = self.ending_encoder(
+        ending0_embedding = self.phrase_encoder(ending0_initial,get_text_field_mask(ending0))
+        ending1_embedding = self.phrase_encoder(ending1_initial,get_text_field_mask(ending1))
+        ending2_embedding = self.phrase_encoder(
             ending2_initial,
             get_text_field_mask(ending2))
-        ending3_embedding = self.ending_encoder(
+        ending3_embedding = self.phrase_encoder(
             ending3_initial,
             get_text_field_mask(ending3))
-
+        # get a linear layer that projects it down to
         # take the dot product of the embeddings
 
         # first, stack the endings so that we get a batch x num_endings
@@ -194,33 +171,3 @@ class SWAGExampleModel(Model):
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
         return {'accuracy': self.accuracy.get_metric(reset)}
-
-    @classmethod
-    def from_params(
-            cls,
-            vocab: Vocabulary,
-            params: Params
-    ) -> 'SWAGExampleModel':
-        text_field_embedder = TextFieldEmbedder.from_params(
-            vocab, params.pop('text_field_embedder'))
-        startphrase_encoder = Seq2VecEncoder.from_params(
-            params.pop('startphrase_encoder'))
-        ending_encoder = Seq2VecEncoder.from_params(
-            params.pop('ending_encoder'))
-
-        similarity = SimilarityFunction.from_params(
-            params.pop('similarity'))
-
-        initializer = InitializerApplicator.from_params(
-            params.pop('initializer', []))
-        regularizer = RegularizerApplicator.from_params(
-            params.pop('regularizer', []))
-
-        return cls(
-            vocab=vocab,
-            text_field_embedder=text_field_embedder,
-            startphrase_encoder=startphrase_encoder,
-            ending_encoder=ending_encoder,
-            similarity=similarity,
-            initializer=initializer,
-            regularizer=regularizer)
