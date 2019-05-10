@@ -70,7 +70,7 @@ class CorefModel(object):
         continue
       if var.name.split("/")[2][0] == "l":
         temp = var.name.split("/")[2][6:]
-        if int(temp) > 22:
+        if int(temp) > 18:
           self.usesful  += [var]
 
     self.usesful += [tvars[-1], tvars[-2]]
@@ -105,28 +105,44 @@ class CorefModel(object):
     # self.input_tensors = queue.dequeue()
     self.input_tensors = self.queue_input_tensors
     self.predictions, self.loss = self.get_predictions_and_loss(*self.input_tensors[3:] , embeddings )
-    self.global_step = tf.Variable(0, name="global_step", trainable=False)
-    self.reset_global_step = tf.assign(self.global_step, 0)
-    learning_rate = tf.train.exponential_decay(self.config["learning_rate"], self.global_step,
+    self.global_step1 = tf.Variable(0, name="global_step", trainable=False)
+    self.global_step2 = tf.Variable(0, name="global_step", trainable=False)
+    self.reset_global_step1 = tf.assign(self.global_step1, 0)
+    self.reset_global_step2 = tf.assign(self.global_step2, 0)
+    
+    learning_rate1 = tf.train.exponential_decay(0.0001, self.global_step1,
+                                               self.config["decay_frequency"], self.config["decay_rate"], staircase=True)
+    learning_rate2 = tf.train.exponential_decay(self.config["learning_rate"], self.global_step2,
                                                self.config["decay_frequency"], self.config["decay_rate"], staircase=True)
     
-
     trainable_params = tf.trainable_variables()
+    Lee_param = [] 
     for  param in trainable_params :
        temp  = param.name.split("/")[0] 
        if "bert" == temp or temp == "context_word_emb:0" or temp== "head_word_emb:0" or temp== "total_embedding:0":
           continue 
        else:
-          self.usesful +=[param]
+          Lee_param  += [param]
     
-    gradients = tf.gradients(self.loss, self.usesful)
-    gradients, _ = tf.clip_by_global_norm(gradients, self.config["max_gradient_norm"])
+    gradients1 = tf.gradients(self.loss, self.usesful)
+    gradients2 = tf.gradients(self.loss, Lee_param )
+    
+    gradients1, _ = tf.clip_by_global_norm(gradients1, self.config["max_gradient_norm"])
+    gradients2, _ = tf.clip_by_global_norm(gradients2, self.config["max_gradient_norm"])
+    
     optimizers = {
       "adam" : tf.train.AdamOptimizer,
       "sgd" : tf.train.GradientDescentOptimizer
     }
-    optimizer = optimizers[self.config["optimizer"]](learning_rate)
-    self.train_op = optimizer.apply_gradients(zip(gradients, self.usesful), global_step=self.global_step)
+
+
+    optimizer1 = tf.train.AdamOptimizer(learning_rate1)
+    optimizer2 = optimizers[self.config["optimizer"]](learning_rate2)
+
+    self.train_op1 = optimizer1.apply_gradients(zip(gradients1, self.usesful), global_step=self.global_step1)
+    self.train_op2 = optimizer2.apply_gradients(zip(gradients2, Lee_param), global_step=self.global_step2)
+
+    self.train_op = tf.group(self.train_op1, self.train_op2)
 
   def start_enqueue_thread(self, session):
     with open(self.config["train_path"], 'rb') as handle:
