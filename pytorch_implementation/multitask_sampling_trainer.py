@@ -137,6 +137,7 @@ class MultiTaskTrainer(TrainerBase):
                 total_loss += loss.item()
                 optimizer.step()
                 batch_info["loss"] = loss.item() 
+                batch_info["optimizer"] = optimizer
                 shared_lstm = model.return_context_layer()
                 torch.save(shared_lstm, "shared_lstm")
                 torch.save(model, self.serialization_dir +current_state+"current_model")

@@ -338,4 +338,4 @@ def multitask_learning():
     ) 
     metrics = trainer.train()
 
-train_only_swag()
+multitask_learning()
