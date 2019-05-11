@@ -38,11 +38,11 @@ from pytorch_pretrained_bert.optimization import BertAdam
 
 import logging as log
 
-#directory = "/beegfs/yp913/Bert-Coref-Resolution-Lee-/"
-directory = "/scratch/ovd208/nlu/bert/Bert-Coref-Resolution-Lee-/"
+directory = "/beegfs/yp913/Bert-Coref-Resolution-Lee-/"
+#directory = "/scratch/ovd208/nlu/bert/Bert-Coref-Resolution-Lee-/"
 
-#dataset_folder = "/beegfs/yp913/dataset/"
-dataset_folder = "/scratch/ovd208/nlu/coref_lee_data/"
+dataset_folder = "/beegfs/yp913/dataset/"
+#dataset_folder = "/scratch/ovd208/nlu/coref_lee_data/"
 
 class PretrainedBertModel:
     """
@@ -160,8 +160,6 @@ def train_only_lee():
     
     train_ds = None
 
-    import pdb
-    pdb.set_trace()
     if processed_reader_dir.is_dir():
         print("Loading indexed from checkpoints")
         train_path =  Path(directory +"processed/train_d")
