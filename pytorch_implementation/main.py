@@ -259,7 +259,7 @@ def train_only_swag():
 
     model = SWAGExampleModel(vocab=swag_vocab, text_field_embedder=word_embedding, phrase_encoder=seq2vec)
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    USE_GPU = 1
+    USE_GPU =1 
     val_iterator = swag_iterator(swag_datasets[1], num_epochs=1, shuffle=True)
     trainer = Trainer(
         model=model,

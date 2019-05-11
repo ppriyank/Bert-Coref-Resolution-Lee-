@@ -65,8 +65,8 @@ class SWAGExampleModel(Model):
             "text field embedding dim",
             "startphrase encoder input dim")
         # bind all attributes to the instance
-        self.text_field_embedder = text_field_embedder
-        self.phrase_encoder = phrase_encoder
+        self.text_field_embedder = text_field_embedder.cuda()
+        self.phrase_encoder = phrase_encoder.cuda()
         # set the training and validation losses
         self.xentropy = torch.nn.CrossEntropyLoss()
         self.accuracy = CategoricalAccuracy()
@@ -114,7 +114,6 @@ class SWAGExampleModel(Model):
         """
         # pass the startphrase and endings through the initial text
         # embedding
-        import pdb; pdb.set_trace()
         startphrase_initial = self.text_field_embedder(startphrase)
         ending0_initial = self.text_field_embedder(ending0)
         ending1_initial = self.text_field_embedder(ending1)
