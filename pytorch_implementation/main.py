@@ -182,7 +182,7 @@ def train_only_lee():
     with open(directory + "saved_models/current_run_model_state", 'wb') as f:
         torch.save(model.state_dict(), f)
 
-def load_datasets(conll_reader, swag_reader, path):
+def load_swag(swag_reader, path):
     swag_reader_dir =  Path(path+"processed/swag/")
     directory = path
     if swag_reader_dir.is_dir():
@@ -203,6 +203,9 @@ def load_datasets(conll_reader, swag_reader, path):
             pickle.dump(test_ds,open(directory + "processed/swag/test_d", "wb"))
             print("saved checkpoints")
         swag_datasets = [train_ds, val_ds, test_ds]
+        return swag_datasets
+def load_datasets(conll_reader, swag_reader, path):
+    swag_datasets = load_swag(swag_reader, path)
     conll_reader_dir =  Path(path+"processed/conll/")
     if conll_reader_dir.is_dir():
         print("Loading indexed from checkpoints for Ontonotes")
@@ -237,7 +240,7 @@ def train_only_swag():
     swag_reader = SWAGDatasetReader(tokenizer=token_indexer.wordpiece_tokenizer,lazy=True, token_indexers=token_indexer)
     EMBEDDING_DIM = 1024
     HIDDEN_DIM = 200
-    conll_datasets, swag_datasets = load_datasets(conll_reader, swag_reader, directory)
+    conll_datasets, swag_datasets = load_swag(swag_reader, directory)
     conll_vocab = Vocabulary()
     swag_vocab = Vocabulary()
     conll_iterator = BasicIterator(batch_size=batch_size)
@@ -246,7 +249,6 @@ def train_only_swag():
     swag_vocab = Vocabulary()
     swag_iterator = BasicIterator(batch_size=batch_size)
     swag_iterator.index_with(swag_vocab)
-
 
     from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 
