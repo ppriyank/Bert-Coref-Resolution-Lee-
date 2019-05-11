@@ -90,53 +90,6 @@ class PretrainedBertEmbedder(BertEmbedder):
                 param.requires_grad = False
         super().__init__(bert_model=model, top_layer_only=top_layer_only)
 
-def lt( model, state_path, gpu_id, skip_task_models=[], strict=True):
-    ''' Helper function to load a model state
-
-    Parameters
-    ----------
-    model: The model object to populate with loaded parameters.
-    state_path: The path to a model_state checkpoint.
-    gpu_id: The GPU to use. -1 for no GPU.
-    skip_task_models: If set, skip task-specific parameters for these tasks.
-        This does not necessarily skip loading ELMo scalar weights, but I (Sam) sincerely
-        doubt that this matters.
-    strict: Whether we should fail if any parameters aren't found in the checkpoint. If false,
-        there is a risk of leaving some parameters in their randomly initialized state.
-    '''
-    model_state = torch.load(state_path, map_location=device_mapping(gpu_id))
-
-    assert_for_log(
-        not (
-            skip_task_models and strict),
-        "Can't skip task models while also strictly loading task models. Something is wrong.")
-
-    for name, param in model.named_parameters():
-        # Make sure no trainable params are missing.
-        if param.requires_grad:
-            if strict:
-                assert_for_log(name in model_state,
-                               "In strict mode and failed to find at least one parameter: " + name)
-            elif (name not in model_state) and ((not skip_task_models) or ("_mdl" not in name)):
-                logging.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                logging.error("Parameter missing from checkpoint: " + name)
-                logging.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-
-    if skip_task_models:
-        keys_to_skip = []
-        for task in skip_task_models:
-            new_keys_to_skip = [key for key in model_state if "%s_mdl" % task in key]
-            if new_keys_to_skip:
-                logging.info("Skipping task-specific parameters for task: %s" % task)
-                keys_to_skip += new_keys_to_skip
-            else:
-                logging.info("Found no task-specific parameters to skip for task: %s" % task)
-        for key in keys_to_skip:
-            del model_state[key]
-
-    model.load_state_dict(model_state, strict=False)
-    logging.info("Loaded model state from %s", state_path)
-
 
 def train_only_lee():
     # This is WORKING! 
@@ -268,6 +221,66 @@ def load_datasets(conll_reader, swag_reader, path):
         conll_datasets = [train_ds, val_ds, test_ds]
     return conll_datasets, swag_datasets
 
+def train_only_swag():
+    # load datasetreader 
+    # Save logging to a local file
+    # Multitasking
+    log.getLogger().addHandler(log.FileHandler(directory+"/log.log"))
+
+    lr = 0.00001
+    batch_size = 2
+    epochs = 10 
+    max_seq_len = 512
+    max_span_width = 30
+    #token_indexer = BertIndexer(pretrained_model="bert-base-uncased", max_pieces=max_seq_len, do_lowercase=True,)
+    token_indexer = PretrainedBertIndexer("bert-base-cased", do_lowercase=False)
+    swag_reader = SWAGDatasetReader(tokenizer=token_indexer.wordpiece_tokenizer,lazy=True, token_indexers=token_indexer)
+    EMBEDDING_DIM = 1024
+    HIDDEN_DIM = 200
+    conll_datasets, swag_datasets = load_datasets(conll_reader, swag_reader, directory)
+    conll_vocab = Vocabulary()
+    swag_vocab = Vocabulary()
+    conll_iterator = BasicIterator(batch_size=batch_size)
+    conll_iterator.index_with(conll_vocab)
+
+    swag_vocab = Vocabulary()
+    swag_iterator = BasicIterator(batch_size=batch_size)
+    swag_iterator.index_with(swag_vocab)
+
+
+    from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
+
+    bert_embedder = PretrainedBertEmbedder(pretrained_model="bert-base-cased",top_layer_only=True, requires_grad=True)
+
+    word_embedding = BasicTextFieldEmbedder({"tokens": bert_embedder}, allow_unmatched_keys=True)
+    BERT_DIM = word_embedding.get_output_dim()
+    seq2vec = PytorchSeq2VecWrapper(torch.nn.LSTM(BERT_DIM, HIDDEN_DIM, batch_first=True, bidirectional=True))
+    mention_feedforward = FeedForward(input_dim = 2336, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
+    antecedent_feedforward = FeedForward(input_dim = 7776, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
+
+    model = SWAGExampleModel(vocab=swag_vocab, text_field_embedder=word_embedding, phrase_encoder=seq2vec)
+    optimizer = optim.Adam(model1.parameters(), lr=lr)
+
+    train_iterator = swag_iterator(swag_datasets[0], num_epochs=1, shuffle=True)
+    val_iterator = swag_iterator(swag_datasets[1], num_epochs=1, shuffle=True)
+    trainer = Trainer(
+        model=model,
+        optimizer=optimizer,
+        iterator=iterator,
+        validation_iterator = val_iterator, 
+        train_dataset=train_ds,
+        validation_dataset = val_ds, 
+        validation_metric = "+coref_f1",
+        cuda_device=0 if USE_GPU else -1,
+        serialization_dir= directory + "saved_models/current_run_model_state",
+        num_epochs=epochs,
+    )    
+
+    metrics = trainer.train()
+    # save the model
+    with open(directory + "saved_models/current_run_model_state", 'wb') as f:
+        torch.save(model.state_dict(), f)
+
 def multitask_learning():
     # load datasetreader 
     # Save logging to a local file
@@ -327,4 +340,4 @@ def multitask_learning():
     ) 
     metrics = trainer.train()
 
-multitask_learning()
+train_only_swag()
