@@ -87,7 +87,6 @@ class MultiTaskTrainer(TrainerBase):
         shared_lstm = None # before trianing, should be rnadomly initialized. 
         current_state = ""
         for epoch in range(0, self.num_epochs):
-
             swag_train_iter = self.task_infos["swag"]["iterator"](self.task_infos["swag"]["train_data"], num_epochs=1, shuffle=True)
             conll_train_iter = self.task_infos["lee"]["iterator"](self.task_infos["lee"]["train_data"], num_epochs=1, shuffle=True)
 
