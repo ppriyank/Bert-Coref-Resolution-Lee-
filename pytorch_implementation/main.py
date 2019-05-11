@@ -240,11 +240,8 @@ def train_only_swag():
     swag_reader = SWAGDatasetReader(tokenizer=token_indexer.wordpiece_tokenizer,lazy=True, token_indexers=token_indexer)
     EMBEDDING_DIM = 1024
     HIDDEN_DIM = 200
-    conll_datasets, swag_datasets = load_swag(swag_reader, directory)
-    conll_vocab = Vocabulary()
+    swag_datasets = load_swag(swag_reader, directory)
     swag_vocab = Vocabulary()
-    conll_iterator = BasicIterator(batch_size=batch_size)
-    conll_iterator.index_with(conll_vocab)
 
     swag_vocab = Vocabulary()
     swag_iterator = BasicIterator(batch_size=batch_size)
