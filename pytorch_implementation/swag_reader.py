@@ -79,16 +79,16 @@ class SWAGDatasetReader(DatasetReader):
         fields = {
             'startphrase': TextField([Token(x) for x in startphrase],self.token_indexers),
             'ending0': TextField(
-                [Token(x) for x in ending0],
+                [Token("[CLS]")] + [Token(x) for x in ending0] + [Token("[SEP]")],
                 self.token_indexers),
             'ending1': TextField(
-                [Token(x) for x in ending1],
+                [Token("[CLS]")] +[Token(x) for x in ending1]+ [Token("[SEP]")],
                 self.token_indexers),
             'ending2': TextField(
-                [Token(x) for x in ending2],
+                [Token("[CLS]")] +[Token(x) for x in ending2] + [Token("[SEP]")],
                 self.token_indexers),
             'ending3': TextField(
-                [Token(x) for x in ending3],
+                [Token("[CLS]")] +[Token(x) for x in ending3] + [Token("[SEP]")],
                 self.token_indexers)
         }
         if label is not None:
