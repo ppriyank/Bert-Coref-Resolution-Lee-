@@ -232,7 +232,7 @@ def train_only_swag():
 
     lr = 0.00001
     batch_size = 2
-    epochs = 10 
+    epochs = 100
     max_seq_len = 512
     max_span_width = 30
     #token_indexer = BertIndexer(pretrained_model="bert-base-uncased", max_pieces=max_seq_len, do_lowercase=True,)
@@ -258,20 +258,19 @@ def train_only_swag():
     antecedent_feedforward = FeedForward(input_dim = 7776, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
 
     model = SWAGExampleModel(vocab=swag_vocab, text_field_embedder=word_embedding, phrase_encoder=seq2vec)
-    optimizer = optim.Adam(model1.parameters(), lr=lr)
-
-    train_iterator = swag_iterator(swag_datasets[0], num_epochs=1, shuffle=True)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    USE_GPU = 1
     val_iterator = swag_iterator(swag_datasets[1], num_epochs=1, shuffle=True)
     trainer = Trainer(
         model=model,
         optimizer=optimizer,
-        iterator=iterator,
-        validation_iterator = val_iterator, 
-        train_dataset=train_ds,
-        validation_dataset = val_ds, 
-        validation_metric = "+coref_f1",
+        iterator=swag_iterator,
+        validation_iterator = swag_iterator, 
+        train_dataset=swag_datasets[0],
+        validation_dataset = swag_datasets[1], 
+        validation_metric = "+accuracy",
         cuda_device=0 if USE_GPU else -1,
-        serialization_dir= directory + "saved_models/current_run_model_state",
+        serialization_dir= directory + "saved_models/current_run_model_state_swag",
         num_epochs=epochs,
     )    
 
