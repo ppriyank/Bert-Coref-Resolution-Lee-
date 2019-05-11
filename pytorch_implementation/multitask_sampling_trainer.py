@@ -105,7 +105,6 @@ class MultiTaskTrainer(TrainerBase):
             order_list = list(range(100))
             np.random.shuffle(order_list)
  
-            import pdb; pdb.set_trace()
             total_loss = 0.0
             for i in range(total_num_batches_train):
                 index = order_list[i] 
@@ -127,7 +126,11 @@ class MultiTaskTrainer(TrainerBase):
                 # and store the rest of the moel. 
                 model = self.restore_model(model, current_state, shared_lstm)
                 model.train()
-                batch = next(iterator)
+                batch = next(iterator, None)
+                if batch is None and current_state == "lee":
+                    # refill the conll itekrator
+                    conll_train_iter = self.task_infos["lee"]["iterator"](self.task_infos["lee"]["train_data"], num_epochs=1, shuffle=True)
+                    iterator = conll_train_iter
                 optimizer.zero_grad()
                 loss = model.forward(**batch)['loss']
                 loss.backward()
@@ -141,19 +144,15 @@ class MultiTaskTrainer(TrainerBase):
                 print("For this specific task, it has loss"+ str(loss.item()) +"for task "+current_state)
                 print("epoch:"+ str(epoch)+ "loss:" +str(total_loss)+"/ ("+str(i+1)+")")
 
+            print("Now validating...")
             batch_info = self.task_infos["lee"]
-            current_state = "lee"
             iterator = conll_val_iter
             model = batch_info["model"]
-            model = self.restore_model(model, current_state, shared_lstm)
+            model = self.restore_model(model, "lee", shared_lstm)
             total_lee_val_loss = 0
             model.eval()
 
             for i in range(total_num_batches_lee_val):
-
-                # TODO: We want to restore the checkpoint here
-                # We want to save _just_ the LSTM part from the last round, 
-                # and store the rest of the moel.
                 batch = next(iterator)
                 loss = model.forward(**batch)['loss']
                 total_lee_val_loss += loss.item()
@@ -164,13 +163,12 @@ class MultiTaskTrainer(TrainerBase):
             batch_info = self.task_infos["swag"]
             current_state = "swag"
             iterator = swag_val_iter
+            model = batch_info["model"]
+            model = self.restore_model(model, "swag", shared_lstm)
             total_swag_val_loss = 0
             model.eval()
 
-            for i in range(total_num_batches_swag_val):
-                # TODO: We want to restore the checkpoint here
-                # We want to save _just_ the LSTM part from the last round, 
-                # and store the rest of the moel.
+            for i in range(500):
                 batch = next(iterator)
                 loss = model.forward(**batch)['loss']
                 total_swag_val_loss += loss.item()
