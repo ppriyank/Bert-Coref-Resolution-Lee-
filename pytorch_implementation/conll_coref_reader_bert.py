@@ -165,7 +165,7 @@ class ConllCorefBertReader(DatasetReader):
         if gold_clusters is not None:
             metadata["clusters"] = gold_clusters
         
-        text_field = TextField([Token(word) for word in flattened_sentences], self._token_indexers)
+        text_field = TextField([Token(["[CLS]"])] + [Token(word) for word in flattened_sentences]+ [Token(["[SEP]"])] , self._token_indexers)
 
         cluster_dict = {}
         if gold_clusters is not None:
