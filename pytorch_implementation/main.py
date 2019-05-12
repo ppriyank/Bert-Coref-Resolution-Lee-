@@ -278,6 +278,7 @@ def train_only_swag():
     with open(directory + "saved_models/current_run_model_state", 'wb') as f:
         torch.save(model.state_dict(), f)
 
+
 def multitask_learning():
     # load datasetreader 
     # Save logging to a local file
@@ -328,7 +329,7 @@ def multitask_learning():
     swag_val_iterator = swag_iterator(swag_datasets[1], num_epochs=1, shuffle=True)
     conll_val_iterator:q = conll_iterator(conll_datasets[1], num_epochs=1, shuffle=True)
     task_infos = {"swag": {"model": model2, "optimizer": optimizer2, "loss": 0.0, "iterator": swag_iterator, "train_data": swag_datasets[0], "val_data": swag_datasets[1], "num_train": len(swag_datasets[0]), "num_val": len(swag_datasets[1]), "lr": lr, "score": {"accuracy":0.0}}, \
-                    "lee": {"model": model1, "iterator": conll_iterator, "loss": 0.0, "val_data": conll_datasets[1], "train_data": conll_datasets[0], "optimizer": optimizer1, "num_train": len(conll_datasets[0]), "num_val": len(conll_datasets[1]),"lr": lr, "score": {"coref_prediction": 0.0, "coref_recall": 0.0, "coref_f1": 0.0,"mention_recall": 0.0}}}
+                    "conll": {"model": model1, "iterator": conll_iterator, "loss": 0.0, "val_data": conll_datasets[1], "train_data": conll_datasets[0], "optimizer": optimizer1, "num_train": len(conll_datasets[0]), "num_val": len(conll_datasets[1]),"lr": lr, "score": {"coref_prediction": 0.0, "coref_recall": 0.0, "coref_f1": 0.0,"mention_recall": 0.0}}}
     USE_GPU = 1
     trainer = MultiTaskTrainer(
         task_infos=task_infos, 
