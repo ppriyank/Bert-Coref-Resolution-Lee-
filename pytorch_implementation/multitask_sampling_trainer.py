@@ -21,6 +21,7 @@ from allennlp.training import checkpointer
 from allennlp.training.checkpointer import Checkpointer
 from allennlp.training.optimizers import Optimizer
 from allennlp.training.trainer_base import TrainerBase
+from allennlp.nn.util import move_to_device
 
 class MultiTaskTrainer(TrainerBase):
     """
@@ -57,7 +58,6 @@ class MultiTaskTrainer(TrainerBase):
         """
         Replace the LSTM parmeters with the one that is being shared
         """
-        import pdb; pdb.set_trace()
         if shared_lstm is None:
             # this is the first run of this training session.
             print("shared is None")
@@ -74,8 +74,6 @@ class MultiTaskTrainer(TrainerBase):
                 name = name.split('phrase_encoder.')[1]
                 before = 'phrase_encoder.'
             if name in param_names:
-                print("copying parameter with name")
-                print(name)
                 #TODO: Make sure this is actually copying it to the dictionary 
                 own_state[before + name].copy_(dictionary[name])
         model.load_state_dict(own_state)
@@ -106,7 +104,7 @@ class MultiTaskTrainer(TrainerBase):
             np.random.shuffle(order_list)
  
             total_loss = 0.0
-            for i in range(total_num_batches_train):
+            for i in range(200):
                 index = order_list[i] 
                 if index * 0.01 <= sampling_ratio:
                     # thi sis CONLL turn
@@ -120,61 +118,63 @@ class MultiTaskTrainer(TrainerBase):
                     iterator = conll_train_iter
                 else:
                     iterator = swag_train_iter
-                model = batch_info["model"]
+                model = batch_info["model"].cuda()
                 # TODO: We want to restore the checkpoint here
                 # We want to save _just_ the LSTM part from the last round, 
                 # and store the rest of the moel. 
                 model = self.restore_model(model, current_state, shared_lstm)
                 model.train()
-                batch = next(iterator, None)
-                if batch is None and current_state == "lee":
-                    # refill the conll itekrator
-                    conll_train_iter = self.task_infos["lee"]["iterator"](self.task_infos["lee"]["train_data"], num_epochs=1, shuffle=True)
-                    iterator = conll_train_iter
-                optimizer.zero_grad()
-                loss = model.forward(**batch)['loss']
-                loss.backward()
-                total_loss += loss.item()
-                optimizer.step()
+                for j in range(200):
+                    # train for 10 batches at a time. 
+                    batch = next(iterator, None)
+                    batch = move_to_device(batch, 0)
+                    if batch is None and current_state == "lee":
+                        # refill the conll itekrator
+                        conll_train_iter = self.task_infos["lee"]["iterator"](self.task_infos["lee"]["train_data"], num_epochs=1, shuffle=True)
+                        iterator = conll_train_iter
+                    optimizer.zero_grad()
+                    loss = model.forward(**batch)['loss']
+                    loss.backward()
+                    optimizer.step()
+                    total_loss += loss.detach()
+                print("For this specific task, it has loss"+ str(loss.item()) +"for task "+current_state)
+                del batch
                 batch_info["loss"] = loss.item() 
                 batch_info["optimizer"] = optimizer
                 shared_lstm = model.return_context_layer()
-                torch.save(shared_lstm, "shared_lstm")
-                torch.save(model, self.serialization_dir +current_state+"current_model")
                 batch_info["model"] = model
-                print("For this specific task, it has loss"+ str(loss.item()) +"for task "+current_state)
                 print("epoch:"+ str(epoch)+ "loss:" +str(total_loss)+"/ ("+str(i+1)+")")
-
-            print("Now validating...")
+            print("After the epoch, we get training metrics for lee task")
             batch_info = self.task_infos["lee"]
             iterator = conll_val_iter
-            model = batch_info["model"]
+            model = batch_info["model"].cuda()
             model = self.restore_model(model, "lee", shared_lstm)
-            total_lee_val_loss = 0
             model.eval()
-
-            for i in range(total_num_batches_lee_val):
-                batch = next(iterator)
-                loss = model.forward(**batch)['loss']
-                total_lee_val_loss += loss.item()
-                batch_info["loss"] = loss.item()
-            print("For task:" + current_state + ", epoch val loss"+ str(total_lee_val_loss))
-
-
-            batch_info = self.task_infos["swag"]
-            current_state = "swag"
-            iterator = swag_val_iter
-            model = batch_info["model"]
-            model = self.restore_model(model, "swag", shared_lstm)
-            total_swag_val_loss = 0
-            model.eval()
+            print(model.get_metrics(reset=True))
+            print("Now validating...")
 
             for i in range(500):
                 batch = next(iterator)
-                loss = model.forward(**batch)['loss']
-                total_swag_val_loss += loss.item()
-                batch_info["loss"] = loss.item()
-            print("For task:" + current_state + ", epoch val loss"+ str(total_swag_val_loss))
+                batch = move_to_device(batch, 0)
+                model.forward(**batch)
+            print("After the epoch, we get validation metrics")
+            print(model.get_metrics())
+
+            print("After the epoch, we get training metrics for swag task")
+            batch_info = self.task_infos["swag"]
+            current_state = "swag"
+            iterator = swag_val_iter
+            model = batch_info["model"].cuda()
+            model = self.restore_model(model, "swag", shared_lstm)
+            model.eval()
+            print(model.get_metrics(reset=True))
+
+            for i in range(total_num_batches_swag_val):
+                batch = next(iterator)
+                batch = move_to_device(batch, 0)
+                model.forward(**batch)
+            print("After the epoch, we get validation metrics")
+            print(model.get_metrics())
 
             self.save_checkpoint(epoch)
 
