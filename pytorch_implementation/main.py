@@ -112,14 +112,13 @@ def train_only_lee():
     processed_reader_dir = Path(directory+"processed/")
     
     train_ds = None
-
     if processed_reader_dir.is_dir():
         print("Loading indexed from checkpoints")
         train_path =  Path(directory +"processed/train_d")
         if train_path.exists():
-            train_ds = pickle.load(open(directory + "processed/train_d", "rb"))
-            val_ds =  pickle.load(open(directory + "processed/val_d", "rb"))
-            test_ds = pickle.load(open(directory + "processed/test_d", "rb"))
+            train_ds = pickle.load(open(directory + "processed/conll/train_d", "rb"))
+            val_ds =  pickle.load(open(directory + "processed/conll/val_d", "rb"))
+            test_ds = pickle.load(open(directory + "processed/conll/test_d", "rb"))
         else:
             print("checkpoints not found")
             train_ds, val_ds, test_ds = (reader.read(dataset_folder + fname) for fname in ["train.english.v4_gold_conll", "dev.english.v4_gold_conll", "test.english.v4_gold_conll"])
@@ -163,7 +162,7 @@ def train_only_lee():
     # and then we can do the shared loss
     # 
     # Get 
-    USE_GPU = 1
+    USE_GPU = 0
     trainer = Trainer(
         model=model,
         optimizer=optimizer,
@@ -173,7 +172,7 @@ def train_only_lee():
         validation_dataset = val_ds, 
         validation_metric = "+coref_f1",
         cuda_device=0 if USE_GPU else -1,
-        serialization_dir= directory + "saved_models/current_run_model_state",
+        serialization_dir= directory + "saved_models/only_lee",
         num_epochs=epochs,
     )    
 
@@ -279,6 +278,7 @@ def train_only_swag():
     with open(directory + "saved_models/current_run_model_state", 'wb') as f:
         torch.save(model.state_dict(), f)
 
+
 def multitask_learning():
     # load datasetreader 
     # Save logging to a local file
@@ -329,7 +329,7 @@ def multitask_learning():
     swag_val_iterator = swag_iterator(swag_datasets[1], num_epochs=1, shuffle=True)
     conll_val_iterator:q = conll_iterator(conll_datasets[1], num_epochs=1, shuffle=True)
     task_infos = {"swag": {"model": model2, "optimizer": optimizer2, "loss": 0.0, "iterator": swag_iterator, "train_data": swag_datasets[0], "val_data": swag_datasets[1], "num_train": len(swag_datasets[0]), "num_val": len(swag_datasets[1]), "lr": lr, "score": {"accuracy":0.0}}, \
-                    "lee": {"model": model1, "iterator": conll_iterator, "loss": 0.0, "val_data": conll_datasets[1], "train_data": conll_datasets[0], "optimizer": optimizer1, "num_train": len(conll_datasets[0]), "num_val": len(conll_datasets[1]),"lr": lr, "score": {"coref_prediction": 0.0, "coref_recall": 0.0, "coref_f1": 0.0,"mention_recall": 0.0}}}
+                    "conll": {"model": model1, "iterator": conll_iterator, "loss": 0.0, "val_data": conll_datasets[1], "train_data": conll_datasets[0], "optimizer": optimizer1, "num_train": len(conll_datasets[0]), "num_val": len(conll_datasets[1]),"lr": lr, "score": {"coref_prediction": 0.0, "coref_recall": 0.0, "coref_f1": 0.0,"mention_recall": 0.0}}}
     USE_GPU = 1
     trainer = MultiTaskTrainer(
         task_infos=task_infos, 

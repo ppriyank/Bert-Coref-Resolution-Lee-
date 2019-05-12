@@ -21,6 +21,7 @@ from allennlp.training import checkpointer
 from allennlp.training.checkpointer import Checkpointer
 from allennlp.training.optimizers import Optimizer
 from allennlp.training.trainer_base import TrainerBase
+from allennlp.nn.util import move_to_device
 
 class MultiTaskTrainer(TrainerBase):
     """
@@ -49,15 +50,14 @@ class MultiTaskTrainer(TrainerBase):
 
     def save_checkpoint(self, epoch: int) -> None:
         swag_training_state = {"epoch": epoch, "optimizer": self.task_infos["swag"]["optimizer"].state_dict()}
-        self.swag_checkpointer.save_checkpoint(epoch, self.task_infos["swag"]["model"].state_dict(), training_state, True)
-        swag_training_state = {"epoch": epoch, "optimizer": self.task_infos["lee"]["optimizer"].state_dict()}
-        self.conll_checkpointer.save_checkpoint(epoch, self.task_infos["lee"]["model"].state_dict(), training_state, True)
+        self.swag_checkpointer.save_checkpoint(epoch, self.task_infos["swag"]["model"].state_dict(), swag_training_state, True)
+        conll_training_state = {"epoch": epoch, "optimizer": self.task_infos["conll"]["optimizer"].state_dict()}
+        self.conll_checkpointer.save_checkpoint(epoch, self.task_infos["conll"]["model"].state_dict(), conll_training_state, True)
 
     def restore_model(self, model, current_state, shared_lstm):
         """
         Replace the LSTM parmeters with the one that is being shared
         """
-        import pdb; pdb.set_trace()
         if shared_lstm is None:
             # this is the first run of this training session.
             print("shared is None")
@@ -67,15 +67,13 @@ class MultiTaskTrainer(TrainerBase):
         own_state = model.state_dict()
         for name, param in model.named_parameters():
             before = ''
-            if current_state == "lee" and '_context_layer' in name:
+            if current_state == "conll" and '_context_layer' in name:
                 name = name.split('_context_layer.')[1]
                 before = '_context_layer.'
             if current_state == 'swag' and 'phrase_encoder' in name:
                 name = name.split('phrase_encoder.')[1]
                 before = 'phrase_encoder.'
             if name in param_names:
-                print("copying parameter with name")
-                print(name)
                 #TODO: Make sure this is actually copying it to the dictionary 
                 own_state[before + name].copy_(dictionary[name])
         model.load_state_dict(own_state)
@@ -88,94 +86,108 @@ class MultiTaskTrainer(TrainerBase):
         current_state = ""
         for epoch in range(0, self.num_epochs):
             swag_train_iter = self.task_infos["swag"]["iterator"](self.task_infos["swag"]["train_data"], num_epochs=1, shuffle=True)
-            conll_train_iter = self.task_infos["lee"]["iterator"](self.task_infos["lee"]["train_data"], num_epochs=1, shuffle=True)
+            conll_train_iter = self.task_infos["conll"]["iterator"](self.task_infos["conll"]["train_data"], num_epochs=1, shuffle=True)
 
             swag_val_iter = self.task_infos["swag"]["iterator"](self.task_infos["swag"]["train_data"], num_epochs=1, shuffle=True)
-            conll_val_iter = self.task_infos["lee"]["iterator"](self.task_infos["lee"]["train_data"], num_epochs=1, shuffle=True)
+            conll_val_iter = self.task_infos["conll"]["iterator"](self.task_infos["conll"]["train_data"], num_epochs=1, shuffle=True)
 
 
-            sampling_ratio = self.task_infos["lee"]["num_train"]/ (self.task_infos["lee"]["num_train"] + self.task_infos["swag"]["num_train"])
+            sampling_ratio = self.task_infos["conll"]["num_train"]/ (self.task_infos["conll"]["num_train"] + self.task_infos["swag"]["num_train"])
             # try smapling_ratio = 0.5 
             sampling_ratio = 0.5
-            total_num_batches_train = self.task_infos["lee"]["num_train"] + self.task_infos["swag"]["num_train"]
+            total_num_batches_train = self.task_infos["conll"]["num_train"] + self.task_infos["swag"]["num_train"]
             #total_num_batches_train = 0
-            total_num_batches_lee_val = self.task_infos["lee"]["num_val"]
+            total_num_batches_lee_val = self.task_infos["conll"]["num_val"]
             total_num_batches_swag_val = self.task_infos["swag"]["num_val"]
 
             order_list = list(range(100))
             np.random.shuffle(order_list)
- 
+            np.random.shuffle(order_list)
             total_loss = 0.0
-            for i in range(total_num_batches_train):
-                index = order_list[i] 
+            for i in range(200):
+                import random
+                index = random.randrange(0, 100)
                 if index * 0.01 <= sampling_ratio:
                     # thi sis CONLL turn
-                    batch_info = self.task_infos["lee"]
-                    current_state = "lee"
+                    batch_info = self.task_infos["conll"]
+                    current_state = "conll"
                 else:
                     batch_info = self.task_infos["swag"]
                     current_state = "swag"
                 optimizer = batch_info["optimizer"]
-                if current_state == "lee":
+                if current_state == "conll":
                     iterator = conll_train_iter
                 else:
                     iterator = swag_train_iter
-                model = batch_info["model"]
+                model = batch_info["model"].cuda()
                 # TODO: We want to restore the checkpoint here
                 # We want to save _just_ the LSTM part from the last round, 
                 # and store the rest of the moel. 
                 model = self.restore_model(model, current_state, shared_lstm)
                 model.train()
-                batch = next(iterator, None)
-                if batch is None and current_state == "lee":
-                    # refill the conll itekrator
-                    conll_train_iter = self.task_infos["lee"]["iterator"](self.task_infos["lee"]["train_data"], num_epochs=1, shuffle=True)
-                    iterator = conll_train_iter
-                optimizer.zero_grad()
-                loss = model.forward(**batch)['loss']
-                loss.backward()
-                total_loss += loss.item()
-                optimizer.step()
+                for j in range(100):
+                    # train for 10 batches at a time. 
+                    batch = next(iterator, None)
+                    if batch is None and current_state == "conll":
+                        # refill the conll itekrator
+                        conll_train_iter = self.task_infos["conll"]["iterator"](self.task_infos["conll"]["train_data"], num_epochs=1, shuffle=True)
+                        iterator = conll_train_iter
+                        batch = next(iterator, None)
+                    if batch is None and current_state == "swag":
+                            # we shouldn't hit this, but just in case swag runs out of bathes
+                            swag_train_iter = self.task_infos["swag"]["iterator"](self.task_infos["swag"]["train_data"], num_epochs=1, shuffle=True)
+                            iterator = swag_train_iter
+                            batch = next(iterator, None)
+                    batch = move_to_device(batch, 0)
+                    optimizer.zero_grad()
+                    try:
+                        loss = model.forward(**batch)['loss']
+                    except Exception as e:
+                        import pdb; pdb.set_trace()
+                    loss.backward()
+                    optimizer.step()
+                    total_loss += loss.detach()
+                print("For this specific task, it has loss"+ str(loss.item()) +"for task "+current_state)
+                del batch
                 batch_info["loss"] = loss.item() 
                 batch_info["optimizer"] = optimizer
                 shared_lstm = model.return_context_layer()
-                torch.save(shared_lstm, "shared_lstm")
-                torch.save(model, self.serialization_dir +current_state+"current_model")
                 batch_info["model"] = model
-                print("For this specific task, it has loss"+ str(loss.item()) +"for task "+current_state)
                 print("epoch:"+ str(epoch)+ "loss:" +str(total_loss)+"/ ("+str(i+1)+")")
-
-            print("Now validating...")
-            batch_info = self.task_infos["lee"]
+            print("After the epoch, we get training metrics for lee task")
+            batch_info = self.task_infos["conll"]
             iterator = conll_val_iter
-            model = batch_info["model"]
-            model = self.restore_model(model, "lee", shared_lstm)
-            total_lee_val_loss = 0
+            model = batch_info["model"].cuda()
+            model = self.restore_model(model, "conll", shared_lstm)
             model.eval()
-
-            for i in range(total_num_batches_lee_val):
-                batch = next(iterator)
-                loss = model.forward(**batch)['loss']
-                total_lee_val_loss += loss.item()
-                batch_info["loss"] = loss.item()
-            print("For task:" + current_state + ", epoch val loss"+ str(total_lee_val_loss))
-
-
-            batch_info = self.task_infos["swag"]
-            current_state = "swag"
-            iterator = swag_val_iter
-            model = batch_info["model"]
-            model = self.restore_model(model, "swag", shared_lstm)
-            total_swag_val_loss = 0
-            model.eval()
+            print(model.get_metrics(reset=True))
+            print("Now validating...")
 
             for i in range(500):
                 batch = next(iterator)
-                loss = model.forward(**batch)['loss']
-                total_swag_val_loss += loss.item()
-                batch_info["loss"] = loss.item()
-            print("For task:" + current_state + ", epoch val loss"+ str(total_swag_val_loss))
+                batch = move_to_device(batch, 0)
+                model.forward(**batch)
+            print("After the epoch, we get validation metrics")
+            print(model.get_metrics())
 
+            print("After the epoch, we get training metrics for swag task")
+            batch_info = self.task_infos["swag"]
+            current_state = "swag"
+            iterator = swag_val_iter
+            model = batch_info["model"].cuda()
+            model = self.restore_model(model, "swag", shared_lstm)
+            model.eval()
+            print(model.get_metrics(reset=True))
+
+            for i in range(500):
+                batch = next(iterator)
+                batch = move_to_device(batch, 0)
+                model.forward(**batch)
+            print("After the epoch, we get validation metrics")
+            print(model.get_metrics())
+            with open(self.serialization_dir+current_state+"/"+ "model_epoch"+str(epoch), 'wb') as f:
+                torch.save(model.state_dict(), f)
             self.save_checkpoint(epoch)
+            print("Finished checkpointing!")
 
         return {}
