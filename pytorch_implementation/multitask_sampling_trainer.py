@@ -143,6 +143,7 @@ class MultiTaskTrainer(TrainerBase):
                     try:
                         loss = model.forward(**batch)['loss']
                     except Exception as e:
+                        print(e)
                         import pdb; pdb.set_trace()
                     loss.backward()
                     optimizer.step()
