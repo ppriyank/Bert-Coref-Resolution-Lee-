@@ -84,7 +84,7 @@ class PretrainedBertEmbedder(BertEmbedder):
         # Only train last 4 layers
         for name, param in model.named_parameters():
             if "encoder.layer.11" in name or "encoder.layer.10" in name or "encoder.layer.9" in name or "encoder.layer.8" in name:
-                print("making finetuning true ")
+                #print("making finetuning true ")
                 param.requires_grad = requires_grad
             else:
                 param.requires_grad = False
