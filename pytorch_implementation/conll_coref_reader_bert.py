@@ -103,8 +103,6 @@ class ConllCorefBertReader(DatasetReader):
             def tokenizer(s: str):
                     return self.token_indexer.wordpiece_tokenizer(s)
             flattened_sentences = tokenizer(" ".join(flattened_sentences))
-            if len(flattened_sentences) > 512:
-                continue
             yield self.text_to_instance([s.words for s in sentences], canonical_clusters)
 
     def align_token(self, text, span):
@@ -159,14 +157,23 @@ class ConllCorefBertReader(DatasetReader):
         gold_clusters = self.align_clusters_to_tokens(flattened_sentences, gold_clusters)
         def tokenizer(s: str):
             return self.token_indexer.wordpiece_tokenizer(s)
-        # we nee dto try this with the other one. 
+
         flattened_sentences = tokenizer(" ".join(flattened_sentences))
         metadata: Dict[str, Any] = {"original_text": flattened_sentences}
         if gold_clusters is not None:
             metadata["clusters"] = gold_clusters
-        
-        text_field = TextField([Token(word) for word in flattened_sentences], self._token_indexers)
-
+        if len(flattened_sentences) > 512:
+            import pdb; pdb.set_trace()
+            text_field = TextField([Token(["[CLS]"])] + [Token(word) for word in flattened_sentences[:512]]+ [Token(["[SEP]"])] , self._token_indexers)
+            total_list = [text_field]
+            import math
+            for i in range(math.ceil(float(len(flattened_sentences[512:]))/100.0)):
+                # slide by 100
+                text_field = TextField([Token(["[CLS]"])] + [Token(word) for word in flattened_sentences[512+ (i*100): 512 + ((i+1) * 100 )]]+ [Token(["[SEP]"])] , self._token_indexers)
+                total_list.append(text_field)
+            text_field = ListField(total_list)
+        else:
+            text_field = TextField([Token(["[CLS]"])] + [Token(word) for word in flattened_sentences]+ [Token(["[SEP]"])] , self._token_indexers) 
         cluster_dict = {}
         if gold_clusters is not None:
             for cluster_id, cluster in enumerate(gold_clusters):
@@ -187,7 +194,7 @@ class ConllCorefBertReader(DatasetReader):
                         span_labels.append(cluster_dict[(start, end)])
                     else:
                         span_labels.append(-1)
-                # align the spans to the BERT tokeniation 
+                # align the spans to the BERT tokeniation
                 normal.append((start, end))
                 spans.append(SpanField(start, end, text_field))
             sentence_offset += len(sentence)

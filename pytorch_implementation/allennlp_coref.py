@@ -79,7 +79,7 @@ class CoreferenceResolver(Model):
         super(CoreferenceResolver, self).__init__(vocab, regularizer)
 
         self._text_field_embedder = text_field_embedder
-
+        # then we combine it from teh > 512 context here. 
         self._context_layer = context_layer
         self._antecedent_feedforward = TimeDistributed(antecedent_feedforward)
         feedforward_scorer = torch.nn.Sequential(TimeDistributed(mention_feedforward), TimeDistributed(torch.nn.Linear(mention_feedforward.get_output_dim(), 1)))
@@ -88,6 +88,7 @@ class CoreferenceResolver(Model):
 
         self._endpoint_span_extractor = EndpointSpanExtractor(context_layer.get_output_dim(),combination="x,y",num_width_embeddings=max_span_width,span_width_embedding_dim=feature_size, bucket_widths=False)
         self._attentive_span_extractor = SelfAttentiveSpanExtractor(input_dim=text_field_embedder.get_output_dim())
+        # I need to add the metadata.
 
         # 10 possible distance buckets.
         self._num_distance_buckets = 10
@@ -148,8 +149,23 @@ class CoreferenceResolver(Model):
         loss : ``torch.FloatTensor``, optional
             A scalar loss to be optimised.
         """
+        import pdb; pdb.set_trace()
         # Shape: (batch_size, document_length, embedding_size)
-        text_embeddings = self._lexical_dropout(self._text_field_embedder(text))
+        if len(text) > 1:
+            text_embeddings = self._lexical_dropout(self._text_field_embedder(text))
+        else:
+            # sliding window approach
+            final_representations = []
+            current_text = self._text_field_embedder(text[0])
+            final_representations.append(current_text[:412])
+            for text_fragment in text[1:]:
+                next_text = self._text_field_embedder(text_fragment)
+                # average the 100. 
+                averaged = torch.mean(torch.stack([current_text[412:], next_text[:100]]), dim=0)
+                final_representations = torch.cat([final_representations, averaged])
+                current_text = next_text
+            final_representations = torch.cat([final_representations, current_text[-100:]])
+            text_embeddings = final_representations
 
         """
         Do sliding window approach. 
