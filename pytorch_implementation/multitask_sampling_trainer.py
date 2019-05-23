@@ -22,6 +22,7 @@ from allennlp.training.checkpointer import Checkpointer
 from allennlp.training.optimizers import Optimizer
 from allennlp.training.trainer_base import TrainerBase
 from allennlp.nn.util import move_to_device
+import math
 
 class MultiTaskTrainer(TrainerBase):
     """
@@ -99,16 +100,15 @@ class MultiTaskTrainer(TrainerBase):
             #total_num_batches_train = 0
             total_num_batches_lee_val = self.task_infos["conll"]["num_val"]
             total_num_batches_swag_val = self.task_infos["swag"]["num_val"]
-
-            order_list = list(range(100))
-            np.random.shuffle(order_list)
-            np.random.shuffle(order_list)
+            train_lengths = len(self.task_infos["swag"]["train_data"]) +len(self.task_infos["lee"]["train_data"])
+            train_lengths = math.ceil(float(train_lengths)/float(100))
             total_loss = 0.0
-            for i in range(200):
+            # train over the total list of swag and lee for one epoch
+            # for each of the turns, we train conscutively for 100 steps
+            for i in range(int(train_lengths)):
                 import random
                 index = random.randrange(0, 100)
                 if index * 0.01 <= sampling_ratio:
-                    # thi sis CONLL turn
                     batch_info = self.task_infos["conll"]
                     current_state = "conll"
                 else:
@@ -143,6 +143,7 @@ class MultiTaskTrainer(TrainerBase):
                     try:
                         loss = model.forward(**batch)['loss']
                     except Exception as e:
+                        print(e)
                         import pdb; pdb.set_trace()
                     loss.backward()
                     optimizer.step()

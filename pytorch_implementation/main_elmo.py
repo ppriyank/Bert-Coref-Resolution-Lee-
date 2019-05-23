@@ -20,7 +20,7 @@ from allennlp.modules.seq2seq_encoders.seq2seq_encoder import Seq2SeqEncoder
 from allennlp.modules.seq2vec_encoders.seq2vec_encoder import Seq2VecEncoder
 from allennlp.training.trainer import Trainer
 from allennlp.modules import FeedForward
-from elmo_text_field_embedder import ElmoTextFieldEmbedder
+#from elmo_text_field_embedder import ElmoTextFieldEmbedder
 from allennlp.modules.token_embedders import Embedding
 from allennlp.data.token_indexers.wordpiece_indexer import PretrainedBertIndexer
 import torch
@@ -38,11 +38,11 @@ from pytorch_pretrained_bert.optimization import BertAdam
 
 import logging as log
 
-directory = "/beegfs/yp913/Bert-Coref-Resolution-Lee-/"
-#directory = "/scratch/ovd208/nlu/bert/Bert-Coref-Resolution-Lee-/"
+#directory = "/beegfs/yp913/Bert-Coref-Resolution-Lee-/"
+directory = "/scratch/ovd208/nlu/bert/Bert-Coref-Resolution-Lee-/"
 
-dataset_folder = "/beegfs/yp913/dataset/"
-#dataset_folder = "/scratch/ovd208/nlu/coref_lee_data/"
+#dataset_folder = "/beegfs/yp913/dataset/"
+dataset_folder = "/scratch/ovd208/nlu/coref_lee_data/"
 
 class PretrainedBertModel:
     """
@@ -84,7 +84,7 @@ class PretrainedBertEmbedder(BertEmbedder):
         # Only train last 4 layers
         for name, param in model.named_parameters():
             if "encoder.layer.11" in name or "encoder.layer.10" in name or "encoder.layer.9" in name or "encoder.layer.8" in name:
-                #print("making finetuning true ")
+                print("making finetuning true ")
                 param.requires_grad = requires_grad
             else:
                 param.requires_grad = False
@@ -290,15 +290,23 @@ def multitask_learning():
     epochs = 10 
     max_seq_len = 512
     max_span_width = 30
+
+    #import pdb
+    #pdb.set_trace()    
+
     #token_indexer = BertIndexer(pretrained_model="bert-base-uncased", max_pieces=max_seq_len, do_lowercase=True,)
-    token_indexer = PretrainedBertIndexer("bert-base-cased", do_lowercase=False)
-    conll_reader = ConllCorefBertReader(max_span_width = max_span_width, token_indexers = {"tokens": token_indexer})
-    swag_reader = SWAGDatasetReader(tokenizer=token_indexer.wordpiece_tokenizer,lazy=True, token_indexers=token_indexer)
+    #token_indexer = PretrainedBertIndexer("bert-base-cased", do_lowercase=False)
+    from allennlp.data.token_indexers.elmo_indexer import ELMoTokenCharactersIndexer
+    # the token indexer is responsible for mapping tokens to integers
+    token_indexer = ELMoTokenCharactersIndexer()
+    
+    #conll_reader = ConllCorefBertReader(max_span_width = max_span_width, token_indexers = {"tokens": token_indexer}) 
+    conll_reader = ConllCorefReader(max_span_width = max_span_width, token_indexers = {"tokens": token_indexer})
+    swag_reader = SWAGDatasetReader(tokenizer=token_indexer,lazy=True, token_indexers=token_indexer)
     EMBEDDING_DIM = 1024
     HIDDEN_DIM = 200
     conll_datasets, swag_datasets = load_datasets(conll_reader, swag_reader, directory)
     conll_vocab = Vocabulary()
-    swag_vocab = Vocabulary()
     conll_iterator = BasicIterator(batch_size=batch_size)
     conll_iterator.index_with(conll_vocab)
 
@@ -306,16 +314,23 @@ def multitask_learning():
     swag_iterator = BasicIterator(batch_size=batch_size)
     swag_iterator.index_with(swag_vocab)
 
-
     from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
+    from allennlp.modules.token_embedders import ElmoTokenEmbedder
 
-    bert_embedder = PretrainedBertEmbedder(pretrained_model="bert-base-cased",top_layer_only=True, requires_grad=True)
+    #bert_embedder = PretrainedBertEmbedder(pretrained_model="bert-base-cased",top_layer_only=True, requires_grad=True)
 
-    word_embedding = BasicTextFieldEmbedder({"tokens": bert_embedder}, allow_unmatched_keys=True)
-    BERT_DIM = word_embedding.get_output_dim()
+    options_file = 'https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x1024_128_2048cnn_1xhighway/elmo_2x1024_128_2048cnn_1xhighway_options.json'
+    weight_file = 'https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x1024_128_2048cnn_1xhighway/elmo_2x1024_128_2048cnn_1xhighway_weights.hdf5'
+ 
+    elmo_embedder = ElmoTokenEmbedder(options_file, weight_file)
+    word_embedding = BasicTextFieldEmbedder({"tokens": elmo_embedder}, allow_unmatched_keys=True)
 
-    seq2seq = PytorchSeq2SeqWrapper(torch.nn.LSTM(BERT_DIM, HIDDEN_DIM, batch_first=True, bidirectional=True))
-    seq2vec = PytorchSeq2VecWrapper(torch.nn.LSTM(BERT_DIM, HIDDEN_DIM, batch_first=True, bidirectional=True))
+    #word_embedding = BasicTextFieldEmbedder({"tokens": bert_embedder}, allow_unmatched_keys=True)
+    #BERT_DIM = word_embedding.get_output_dim()
+    ELMO_DIM = word_embedding.get_output_dim()
+
+    seq2seq = PytorchSeq2SeqWrapper(torch.nn.LSTM(ELMO_DIM, HIDDEN_DIM, batch_first=True, bidirectional=True))
+    seq2vec = PytorchSeq2VecWrapper(torch.nn.LSTM(ELMO_DIM, HIDDEN_DIM, batch_first=True, bidirectional=True))
     mention_feedforward = FeedForward(input_dim = 2336, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
     antecedent_feedforward = FeedForward(input_dim = 7776, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
     model1 = CoreferenceResolver(vocab=conll_vocab, text_field_embedder=word_embedding,context_layer= seq2seq, mention_feedforward=mention_feedforward,antecedent_feedforward=antecedent_feedforward , feature_size=768,max_span_width=max_span_width,spans_per_word=0.4,max_antecedents=250,lexical_dropout= 0.2)
