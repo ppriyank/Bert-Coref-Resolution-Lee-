@@ -114,6 +114,9 @@ class SWAGExampleModel(Model):
         """
         # pass the startphrase and endings through the initial text
         # embedding
+        print(startphrase)
+        import pdb
+        pdb.set_trace()
         startphrase_initial = self.text_field_embedder(startphrase)
         ending0_initial = self.text_field_embedder(ending0)
         ending1_initial = self.text_field_embedder(ending1)

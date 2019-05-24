@@ -189,7 +189,9 @@ class ConllCorefBertReader(DatasetReader):
                         span_labels.append(-1)
                 # align the spans to the BERT tokeniation 
                 normal.append((start, end))
-                spans.append(SpanField(start, end, text_field))
+                span_field = TextField([Token(["[CLS]"])] + [Token(word) for word in flattened_sentences]+ [Token(["[SEP]"])] , self._token_indexers) 
+                # span field for Span, which needs to be a flattened esnetnece. 
+                spans.append(SpanField(start, end, span_field))
             sentence_offset += len(sentence)
 
         span_field = ListField(spans)
