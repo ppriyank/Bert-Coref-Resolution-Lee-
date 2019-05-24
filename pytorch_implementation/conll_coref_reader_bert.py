@@ -163,7 +163,6 @@ class ConllCorefBertReader(DatasetReader):
         if gold_clusters is not None:
             metadata["clusters"] = gold_clusters
         if len(flattened_sentences) > 512:
-            import pdb; pdb.set_trace()
             text_field = TextField([Token(["[CLS]"])] + [Token(word) for word in flattened_sentences[:512]]+ [Token(["[SEP]"])] , self._token_indexers)
             total_list = [text_field]
             import math
@@ -172,6 +171,8 @@ class ConllCorefBertReader(DatasetReader):
                 text_field = TextField([Token(["[CLS]"])] + [Token(word) for word in flattened_sentences[512+ (i*100): 512 + ((i+1) * 100 )]]+ [Token(["[SEP]"])] , self._token_indexers)
                 total_list.append(text_field)
             text_field = ListField(total_list)
+            # doing the Listfield 
+
         else:
             text_field = TextField([Token(["[CLS]"])] + [Token(word) for word in flattened_sentences]+ [Token(["[SEP]"])] , self._token_indexers) 
         cluster_dict = {}
@@ -196,7 +197,9 @@ class ConllCorefBertReader(DatasetReader):
                         span_labels.append(-1)
                 # align the spans to the BERT tokeniation
                 normal.append((start, end))
-                spans.append(SpanField(start, end, text_field))
+                span_field = TextField([Token(["[CLS]"])] + [Token(word) for word in flattened_sentences]+ [Token(["[SEP]"])] , self._token_indexers) 
+                # span field for Span, which needs to be a flattened esnetnece. 
+                spans.append(SpanField(start, end, span_field))
             sentence_offset += len(sentence)
 
         span_field = ListField(spans)
