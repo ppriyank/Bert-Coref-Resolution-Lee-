@@ -100,7 +100,7 @@ class MultiTaskTrainer(TrainerBase):
             #total_num_batches_train = 0
             total_num_batches_lee_val = self.task_infos["conll"]["num_val"]
             total_num_batches_swag_val = self.task_infos["swag"]["num_val"]
-            train_lengths = len(self.task_infos["swag"]["train_data"]) +len(self.task_infos["lee"]["train_data"])
+            train_lengths = len(self.task_infos["swag"]["train_data"]) +len(self.task_infos["conll"]["train_data"])
             train_lengths = math.ceil(float(train_lengths)/float(100))
             total_loss = 0.0
             # train over the total list of swag and lee for one epoch
@@ -140,6 +140,7 @@ class MultiTaskTrainer(TrainerBase):
                             batch = next(iterator, None)
                     batch = move_to_device(batch, 0)
                     optimizer.zero_grad()
+                    loss = model.forward(**batch)['loss']
                     try:
                         loss = model.forward(**batch)['loss']
                     except Exception as e:

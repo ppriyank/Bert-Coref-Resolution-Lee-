@@ -36,6 +36,9 @@ import pickle
 import copy
 from pytorch_pretrained_bert.optimization import BertAdam
 
+from allennlp.data.tokenizers.word_splitter import SpacyWordSplitter
+
+
 import logging as log
 
 #directory = "/beegfs/yp913/Bert-Coref-Resolution-Lee-/"
@@ -182,43 +185,44 @@ def train_only_lee():
         torch.save(model.state_dict(), f)
 
 def load_swag(swag_reader, path):
-    swag_reader_dir =  Path(path+"processed/swag/")
+    swag_reader_dir =  Path(path+"processed/swag_elmo/")
     directory = path
     if swag_reader_dir.is_dir():
-        print("Loading indexed from checkpoints for Ontonotes")
-        train_path =  Path(directory +"processed/swag/train_d")
+        print("Loading indexed from checkpoints for swag")
+        train_path =  Path(directory +"processed/swag_elmo/train_d")
         if train_path.exists():
-            train_ds = pickle.load(open(directory + "processed/swag/train_d", "rb"))
-            val_ds =  pickle.load(open(directory + "processed/swag/val_d", "rb"))
-            test_ds = pickle.load(open(directory + "processed/swag/test_d", "rb"))
+            train_ds = pickle.load(open(directory + "processed/swag_elmo/train_d", "rb"))
+            val_ds =  pickle.load(open(directory + "processed/swag_elmo/val_d", "rb"))
+            test_ds = pickle.load(open(directory + "processed/swag_elmo/test_d", "rb"))
         else:
             print("checkpoints not found")
             train_ds, val_ds, test_ds = (swag_reader._read(directory + "data/swagaf/" + fname) for fname in ["train.csv", "val.csv", "test.csv"])
             train_ds = list(train_ds)
             val_ds = list(val_ds)
             test_ds = list(test_ds)
-            pickle.dump(train_ds,open(directory + "processed/swag/train_d", "wb"))
-            pickle.dump(val_ds,open(directory + "processed/swag/val_d", "wb"))
-            pickle.dump(test_ds,open(directory + "processed/swag/test_d", "wb"))
+            pickle.dump(train_ds,open(directory + "processed/swag_elmo/train_d", "wb"))
+            pickle.dump(val_ds,open(directory + "processed/swag_elmo/val_d", "wb"))
+            pickle.dump(test_ds,open(directory + "processed/swag_elmo/test_d", "wb"))
             print("saved checkpoints")
         swag_datasets = [train_ds, val_ds, test_ds]
         return swag_datasets
+
 def load_datasets(conll_reader, swag_reader, path):
     swag_datasets = load_swag(swag_reader, path)
-    conll_reader_dir =  Path(path+"processed/conll/")
+    conll_reader_dir =  Path(path+"processed/conll_elmo/")
     if conll_reader_dir.is_dir():
         print("Loading indexed from checkpoints for Ontonotes")
-        train_path =  Path(directory +"processed/conll/train_d")
+        train_path =  Path(directory +"processed/conll_elmo/train_d")
         if train_path.exists():
-            train_ds = pickle.load(open(directory + "processed/conll/train_d", "rb"))
-            val_ds =  pickle.load(open(directory + "processed/conll/val_d", "rb"))
-            test_ds = pickle.load(open(directory + "processed/conll/test_d", "rb"))
+            train_ds = pickle.load(open(directory + "processed/conll_elmo/train_d", "rb"))
+            val_ds =  pickle.load(open(directory + "processed/conll_elmo/val_d", "rb"))
+            test_ds = pickle.load(open(directory + "processed/conll_elmo/test_d", "rb"))
         else:
             print("checkpoints not found")
             train_ds, val_ds, test_ds = (conll_reader.read(dataset_folder + fname) for fname in ["train.english.v4_gold_conll", "dev.english.v4_gold_conll", "test.english.v4_gold_conll"])
-            pickle.dump(train_ds,open(directory + "processed/conll/train_d", "wb"))
-            pickle.dump(val_ds,open(directory + "processed/conll/val_d", "wb"))
-            pickle.dump(test_ds,open(directory + "processed/conll/test_d", "wb"))
+            pickle.dump(train_ds,open(directory + "processed/conll_elmo/train_d", "wb"))
+            pickle.dump(val_ds,open(directory + "processed/conll_elmo/val_d", "wb"))
+            pickle.dump(test_ds,open(directory + "processed/conll_elmo/test_d", "wb"))
             print("saved checkpoints")
         conll_datasets = [train_ds, val_ds, test_ds]
     return conll_datasets, swag_datasets
@@ -300,9 +304,13 @@ def multitask_learning():
     # the token indexer is responsible for mapping tokens to integers
     token_indexer = ELMoTokenCharactersIndexer()
     
+    def tokenizer(x: str):
+        return [w.text for w in SpacyWordSplitter(language='en_core_web_sm', pos_tags=False).split_words(x)[:max_seq_len]]
+
+
     #conll_reader = ConllCorefBertReader(max_span_width = max_span_width, token_indexers = {"tokens": token_indexer}) 
     conll_reader = ConllCorefReader(max_span_width = max_span_width, token_indexers = {"tokens": token_indexer})
-    swag_reader = SWAGDatasetReader(tokenizer=token_indexer,lazy=True, token_indexers=token_indexer)
+    swag_reader = SWAGDatasetReader(tokenizer=tokenizer, token_indexers={"tokens": token_indexer})
     EMBEDDING_DIM = 1024
     HIDDEN_DIM = 200
     conll_datasets, swag_datasets = load_datasets(conll_reader, swag_reader, directory)
@@ -323,7 +331,7 @@ def multitask_learning():
     weight_file = 'https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x1024_128_2048cnn_1xhighway/elmo_2x1024_128_2048cnn_1xhighway_weights.hdf5'
  
     elmo_embedder = ElmoTokenEmbedder(options_file, weight_file)
-    word_embedding = BasicTextFieldEmbedder({"tokens": elmo_embedder}, allow_unmatched_keys=True)
+    word_embedding = BasicTextFieldEmbedder({"tokens": elmo_embedder})#, allow_unmatched_keys=True)
 
     #word_embedding = BasicTextFieldEmbedder({"tokens": bert_embedder}, allow_unmatched_keys=True)
     #BERT_DIM = word_embedding.get_output_dim()
