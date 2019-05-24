@@ -350,7 +350,10 @@ def predict():
     for i in range(20):
         batch = next(conll_test_iterator, None)
         output = model1.forward(**batch)
-        
+        #import pdb
+        #pdb.set_trace()
+        if len(batch['metadata'][0]['original_text']) > 150:
+            continue
         #let us print out the predictions in the first document of this batch
         pairs = []
         for index,j in enumerate(output['predicted_antecedents'][0]):
@@ -359,9 +362,10 @@ def predict():
                 i2 = output['top_spans'][0][output['antecedent_indices'][index][j]]
                 d0 = output['document'][0]
                 pairs.append([d0[i1[0]:i1[1]+1], d0[i2[0]:i2[1]+1]])
-
         #pairs
-        #print(pairs)
+        print(batch['metadata'][0]['original_text'])
+        print( batch['metadata'][0]['clusters'])
+        print(pairs)
         metrics = model1.get_metrics()
         print(metrics['coref_f1'])
         #import pdb
@@ -457,5 +461,5 @@ def predict_only_lee():
         #import pdb
         #pdb.set_trace()
 
-predict_only_lee()
-#predict()
+#predict_only_lee()
+predict()

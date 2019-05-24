@@ -310,7 +310,7 @@ def multitask_learning():
 
     #conll_reader = ConllCorefBertReader(max_span_width = max_span_width, token_indexers = {"tokens": token_indexer}) 
     conll_reader = ConllCorefReader(max_span_width = max_span_width, token_indexers = {"tokens": token_indexer})
-    swag_reader = SWAGDatasetReader(tokenizer=tokenizer, token_indexers={"tokens": token_indexer})
+    swag_reader = SWAGDatasetReader(tokenizer=tokenizer, token_indexers = token_indexer)
     EMBEDDING_DIM = 1024
     HIDDEN_DIM = 200
     conll_datasets, swag_datasets = load_datasets(conll_reader, swag_reader, directory)

@@ -149,7 +149,7 @@ class CoreferenceResolver(Model):
         loss : ``torch.FloatTensor``, optional
             A scalar loss to be optimised.
         """
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         # Shape: (batch_size, document_length, embedding_size)
         if len(text) > 1:
             text_embeddings = self._lexical_dropout(self._text_field_embedder(text))
