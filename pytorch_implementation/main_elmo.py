@@ -6,7 +6,7 @@ import torch
 import allennlp
 from allennlp.data.dataset_readers.coreference_resolution.conll import ConllCorefReader
 from conll_coref_reader_bert import ConllCorefBertReader
-from swag_reader import SWAGDatasetReader
+from swag_reader_elmo import SWAGDatasetReader
 #present in allennlp 0.8.4
 from multitask_sampling_trainer import  MultiTaskTrainer
 #import allennlp.data.token_indexers.wordpiece_indexer.PretrainedBertIndexer as BertIndexer

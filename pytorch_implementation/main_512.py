@@ -11,7 +11,7 @@ from swag_reader import SWAGDatasetReader
 from multitask_sampling_trainer import  MultiTaskTrainer
 #import allennlp.data.token_indexers.wordpiece_indexer.PretrainedBertIndexer as BertIndexer
 from allennlp.data.token_indexers import SingleIdTokenIndexer
-from allennlp_coref_512 import CoreferenceResolver
+from allenlp_coref_512 import CoreferenceResolver
 from swag_model import SWAGExampleModel
 from allennlp.data.iterators import BucketIterator, BasicIterator
 from allennlp.data.vocabulary import Vocabulary
@@ -38,11 +38,11 @@ from pytorch_pretrained_bert.optimization import BertAdam
 
 import logging as log
 
-directory = "/beegfs/yp913/Bert-Coref-Resolution-Lee-/"
-#directory = "/scratch/ovd208/nlu/bert/Bert-Coref-Resolution-Lee-/"
+#directory = "/beegfs/yp913/Bert-Coref-Resolution-Lee-/"
+directory = "/scratch/ovd208/nlu/bert/Bert-Coref-Resolution-Lee-/"
 
-dataset_folder = "/beegfs/yp913/dataset/"
-#dataset_folder = "/scratch/ovd208/nlu/coref_lee_data/"
+#dataset_folder = "/beegfs/yp913/dataset/"
+dataset_folder = "/scratch/ovd208/nlu/coref_lee_data/"
 
 class PretrainedBertModel:
     """
