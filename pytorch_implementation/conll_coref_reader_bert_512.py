@@ -6,7 +6,8 @@ from overrides import overrides
 
 from allennlp.common.file_utils import cached_path
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
-from allennlp.data.fields import Field, ListField, TextField, SpanField, MetadataField, SequenceLabelField
+from allennlp.data.fields import Field, ListField, TextField, MetadataField, SequenceLabelField
+from span_field import SpanField
 from allennlp.data.instance import Instance
 from allennlp.data.tokenizers import Token
 from allennlp.data.token_indexers import SingleIdTokenIndexer, TokenIndexer
@@ -163,6 +164,8 @@ class ConllCorefBertReader(DatasetReader):
         if gold_clusters is not None:
             metadata["clusters"] = gold_clusters
         if len(flattened_sentences) > 512:
+            #import pdb
+            #pdb.set_trace()
             text_field = TextField([Token(["[CLS]"])] + [Token(word) for word in flattened_sentences[:512]]+ [Token(["[SEP]"])] , self._token_indexers)
             total_list = [text_field]
             import math
@@ -198,10 +201,13 @@ class ConllCorefBertReader(DatasetReader):
                 # align the spans to the BERT tokeniation
                 normal.append((start, end))
                 # span field for Span, which needs to be a flattened esnetnece.
+                span_field = None
+                """
                 if len(flattened_sentences) > 512:
                     span_field = TextField([Token(["[CLS]"])] + [Token(word) for word in flattened_sentences]+ [Token(["[SEP]"])] , self._token_indexers) 
                 else:
                     span_field = text_field
+                """
                 spans.append(SpanField(start, end, span_field))
             sentence_offset += len(sentence)
 

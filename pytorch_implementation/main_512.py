@@ -185,7 +185,7 @@ def load_swag(swag_reader, path):
     swag_reader_dir =  Path(path+"processed/swag/")
     directory = path
     if swag_reader_dir.is_dir():
-        print("Loading indexed from checkpoints for Ontonotes")
+        print("Loading indexed from checkpoints for swag")
         train_path =  Path(directory +"processed/swag/train_d")
         if train_path.exists():
             train_ds = pickle.load(open(directory + "processed/swag/train_d", "rb"))
@@ -205,20 +205,20 @@ def load_swag(swag_reader, path):
         return swag_datasets
 def load_datasets(conll_reader, swag_reader, path):
     swag_datasets = load_swag(swag_reader, path)
-    conll_reader_dir =  Path(path+"processed/conll/")
+    conll_reader_dir =  Path(path+"processed/conll_512/")
     if conll_reader_dir.is_dir():
         print("Loading indexed from checkpoints for Ontonotes")
-        train_path =  Path(directory +"processed/conll/train_d")
+        train_path =  Path(directory +"processed/conll_512/train_d")
         if train_path.exists():
-            train_ds = pickle.load(open(directory + "processed/conll/train_d", "rb"))
-            val_ds =  pickle.load(open(directory + "processed/conll/val_d", "rb"))
-            test_ds = pickle.load(open(directory + "processed/conll/test_d", "rb"))
+            train_ds = pickle.load(open(directory + "processed/conll_512/train_d", "rb"))
+            val_ds =  pickle.load(open(directory + "processed/conll_512/val_d", "rb"))
+            test_ds = pickle.load(open(directory + "processed/conll_512/test_d", "rb"))
         else:
             print("checkpoints not found")
             train_ds, val_ds, test_ds = (conll_reader.read(dataset_folder + fname) for fname in ["train.english.v4_gold_conll", "dev.english.v4_gold_conll", "test.english.v4_gold_conll"])
-            pickle.dump(train_ds,open(directory + "processed/conll/train_d", "wb"))
-            pickle.dump(val_ds,open(directory + "processed/conll/val_d", "wb"))
-            pickle.dump(test_ds,open(directory + "processed/conll/test_d", "wb"))
+            pickle.dump(train_ds,open(directory + "processed/conll_512/train_d", "wb"))
+            pickle.dump(val_ds,open(directory + "processed/conll_512/val_d", "wb"))
+            pickle.dump(test_ds,open(directory + "processed/conll_512/test_d", "wb"))
             print("saved checkpoints")
         conll_datasets = [train_ds, val_ds, test_ds]
     return conll_datasets, swag_datasets
