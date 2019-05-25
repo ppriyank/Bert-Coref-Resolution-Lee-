@@ -41,11 +41,9 @@ from allennlp.data.tokenizers.word_splitter import SpacyWordSplitter
 
 import logging as log
 
-#directory = "/beegfs/yp913/Bert-Coref-Resolution-Lee-/"
-directory = "/scratch/ovd208/nlu/bert/Bert-Coref-Resolution-Lee-/"
+directory = "/beegfs/yp913/Bert-Coref-Resolution-Lee-/"
 
-#dataset_folder = "/beegfs/yp913/dataset/"
-dataset_folder = "/scratch/ovd208/nlu/coref_lee_data/"
+dataset_folder = "/beegfs/yp913/dataset/"
 
 class PretrainedBertModel:
     """
@@ -114,23 +112,9 @@ def train_only_lee():
     HIDDEN_DIM = 200
     processed_reader_dir = Path(directory+"processed/")
     
-    train_ds = None
-    if processed_reader_dir.is_dir():
-        print("Loading indexed from checkpoints")
-        train_path =  Path(directory +"processed/train_d")
-        if train_path.exists():
-            train_ds = pickle.load(open(directory + "processed/conll/train_d", "rb"))
-            val_ds =  pickle.load(open(directory + "processed/conll/val_d", "rb"))
-            test_ds = pickle.load(open(directory + "processed/conll/test_d", "rb"))
-        else:
-            print("checkpoints not found")
-            train_ds, val_ds, test_ds = (reader.read(dataset_folder + fname) for fname in ["train.english.v4_gold_conll", "dev.english.v4_gold_conll", "test.english.v4_gold_conll"])
-            pickle.dump(train_ds,open(directory + "processed/train_d", "wb"))
-            pickle.dump(val_ds,open(directory + "processed/val_d", "wb"))
-            pickle.dump(test_ds,open(directory + "processed/test_d", "wb"))
-            print("saved checkpoints")
+    train_ds, val_ds, test_ds = load_lee(reader, directory)
     # restore checkpoint here
-
+    from allennlp.modules.token_embedders import ElmoTokenEmbedder
     #vocab = Vocabulary.from_instances(train_ds + val_ds)
     vocab = Vocabulary()
     iterator = BasicIterator(batch_size=batch_size)
@@ -139,24 +123,25 @@ def train_only_lee():
     val_iterator = BasicIterator(batch_size=batch_size)
     val_iterator.index_with(vocab)
     from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
-
-    bert_embedder = PretrainedBertEmbedder(
-             pretrained_model="bert-base-cased",
-             top_layer_only=True, # conserve memory
-             requires_grad=True
-     )
     # here, allow_unmatched_key = True since we dont pass in offsets since 
     #we allow for word embedings of the bert-tokenized, wnot necessiarly the 
     # original tokens
     # see the documetnation for offsets here for more info:
     # https://github.com/allenai/allennlp/blob/master/allennlp/modules/token_embedders/bert_token_embedder.py
-    word_embedding = BasicTextFieldEmbedder({"tokens": bert_embedder}, allow_unmatched_keys=True)
-    BERT_DIM = word_embedding.get_output_dim()
+    options_file = 'https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x1024_128_2048cnn_1xhighway/elmo_2x1024_128_2048cnn_1xhighway_options.json'
+    weight_file = 'https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x1024_128_2048cnn_1xhighway/elmo_2x1024_128_2048cnn_1xhighway_weights.hdf5'
+ 
+    elmo_embedder = ElmoTokenEmbedder(options_file, weight_file)
+    word_embedding = BasicTextFieldEmbedder({"tokens": elmo_embedder})#, allow_unmatched_keys=True)
+
+    #word_embedding = BasicTextFieldEmbedder({"tokens": bert_embedder}, allow_unmatched_keys=True)
+    #BERT_DIM = word_embedding.get_output_dim()
+    ELMO_DIM = word_embedding.get_output_dim()
     # at each batch, sample from the two, and load th eLSTM
-    shared_layer = torch.nn.LSTM(BERT_DIM, HIDDEN_DIM, batch_first=True, bidirectional=True)
+    shared_layer = torch.nn.LSTM(ELMO_DIM, HIDDEN_DIM, batch_first=True, bidirectional=True)
     seq2seq = PytorchSeq2SeqWrapper(shared_layer)
-    mention_feedforward = FeedForward(input_dim = 2336, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
-    antecedent_feedforward = FeedForward(input_dim = 7776, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
+    mention_feedforward = FeedForward(input_dim =512, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
+    antecedent_feedforward = FeedForward(input_dim =2304, num_layers = 2, hidden_dims = 150, activations = torch.nn.ReLU())
 
     model = CoreferenceResolver(vocab=vocab, text_field_embedder=word_embedding,context_layer= seq2seq, mention_feedforward=mention_feedforward,antecedent_feedforward=antecedent_feedforward , feature_size=768,max_span_width=max_span_width,spans_per_word=0.4,max_antecedents=250,lexical_dropout= 0.2)
     print(model)
@@ -165,9 +150,9 @@ def train_only_lee():
     # and then we can do the shared loss
     # 
     # Get 
-    USE_GPU = 0
+    USE_GPU = 1
     trainer = Trainer(
-        model=model,
+        model=model.cuda(),
         optimizer=optimizer,
         iterator=iterator,
         validation_iterator = val_iterator, 
@@ -191,7 +176,7 @@ def load_swag(swag_reader, path):
         print("Loading indexed from checkpoints for swag")
         train_path =  Path(directory +"processed/swag_elmo/train_d")
         if train_path.exists():
-            train_ds = pickle.load(open(directory + "processed/swag_elmo/train_d", "rb"))
+            train_ds = pickle.load(open(directory + "pr/swag_elmo/train_d", "rb"))
             val_ds =  pickle.load(open(directory + "processed/swag_elmo/val_d", "rb"))
             test_ds = pickle.load(open(directory + "processed/swag_elmo/test_d", "rb"))
         else:
@@ -226,6 +211,24 @@ def load_datasets(conll_reader, swag_reader, path):
             print("saved checkpoints")
         conll_datasets = [train_ds, val_ds, test_ds]
     return conll_datasets, swag_datasets
+
+def load_lee(conll_Reader, path):
+    conll_reader_dir =  Path(path+"processed/conll_elmo/")
+    if conll_reader_dir.is_dir():
+        print("Loading indexed from checkpoints for Ontonotes")
+        train_path =  Path(directory +"processed/conll_elmo/train_d")
+        if train_path.exists():
+            train_ds = pickle.load(open(directory + "processed/conll_elmo/train_d", "rb"))
+            val_ds =  pickle.load(open(directory + "processed/conll_elmo/val_d", "rb"))
+            test_ds = pickle.load(open(directory + "processed/conll_elmo/test_d", "rb"))
+        else:
+            print("checkpoints not found")
+            train_ds, val_ds, test_ds = (conll_reader.read(dataset_folder + fname) for fname in ["train.english.v4_gold_conll", "dev.english.v4_gold_conll", "test.english.v4_gold_conll"])
+            pickle.dump(train_ds,open(directory + "processed/conll_elmo/train_d", "wb"))
+            pickle.dump(val_ds,open(directory + "processed/conll_elmo/val_d", "wb"))
+            pickle.dump(test_ds,open(directory + "processed/conll_elmo/test_d", "wb"))
+            print("saved checkpoints")
+    return train_ds, val_ds, test_ds 
 
 def train_only_swag():
     # load datasetreader 
@@ -361,4 +364,4 @@ def multitask_learning():
     ) 
     metrics = trainer.train()
 
-multitask_learning()
+train_only_lee()
