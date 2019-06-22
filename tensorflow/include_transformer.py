@@ -433,69 +433,45 @@ class CorefModel(object):
       target_emb = tf.expand_dims(embd, 1) # [k, 1, emb]
       target_emb = tf.tile(target_emb, [1, k, 1]) # [k, k, emb]
       pair_emb = tf.concat([target_emb, top_antecedent_emb_], 2) # [k, k, emb]
-      # self.pair = pair_emb
       h1_score = tf.layers.dense(pair_emb , 150 , activation=tf.nn.relu )
-      score  = tf.layers.dense(pair_emb , 1 , activation=tf.nn.sigmoid )
-      # self.score = score
+      score  = tf.layers.dense(pair_emb , 1 )
       score = tf.reshape(score , [k,k])
-      dummy_scores = tf.zeros([k, 1]) # [k, 1]
-      top_antecedent_scores = tf.concat([dummy_scores, score], 1) # [k, k + 1]
-      # top_span_emb = tf.concat([predictions[:k] ,top_span_emb ], 1)
-
-    # k = 50
-    # score= tf.random.uniform([k,k])
-    # c = tf.minimum(self.config["max_top_antecedents"], k)
-    # if self.config["coarse_to_fine"]:
-    #   top_antecedents, top_antecedents_mask, top_fast_antecedent_scores, top_antecedent_offsets = self.coarse_to_fine_pruning(top_span_emb, top_span_mention_scores, c)
-    # else:
-    #   top_antecedents, top_antecedents_mask, top_fast_antecedent_scores, top_antecedent_offsets = self.distance_pruning(top_span_emb, top_span_mention_scores, c)
-
-    
-
-    # dummy_scores = tf.zeros([k, 1]) # [k, 1]
-    # self.top = top_span_emb
-    # self.y  = top_antecedents
-    # with tf.variable_scope("coref_layer"):
-    #     top_antecedent_scores = top_fast_antecedent_scores + self.get_slow_antecedent_scores(top_span_emb, top_antecedents, top_antecedent_emb, top_antecedent_offsets, top_span_speaker_ids, genre_emb) # [k, c]
-        
-    # dummy_scores = tf.zeros([k, 1]) # [k, 1]
-    # for i in range(self.config["coref_depth"]):
-    #   with tf.variable_scope("coref_layer", reuse=(i > 0)):
-    #     top_antecedent_emb = tf.gather(top_span_emb, top_antecedents) # [k, c, emb]
-    #     top_antecedent_scores = top_fast_antecedent_scores + self.get_slow_antecedent_scores(top_span_emb, top_antecedents, top_antecedent_emb, top_antecedent_offsets, top_span_speaker_ids, genre_emb) # [k, c]
-    #     top_antecedent_weights = tf.nn.softmax(tf.concat([dummy_scores, top_antecedent_scores], 1)) # [k, c + 1]
-    #     top_antecedent_emb = tf.concat([tf.expand_dims(top_span_emb, 1), top_antecedent_emb], 1) # [k, c + 1, emb]
-    #     attended_span_emb = tf.reduce_sum(tf.expand_dims(top_antecedent_weights, 2) * top_antecedent_emb, 1) # [k, emb]
-    #     with tf.variable_scope("f"):
-    #       f = tf.sigmoid(util.projection(tf.concat([top_span_emb, attended_span_emb], 1), util.shape(top_span_emb, -1))) # [k, emb]
-    #       top_span_emb = f * attended_span_emb + (1 - f) * top_span_emb # [k, emb]
+      top_antecedent_scores = score
+      # score = tf.random_uniform([10,10],maxval=0.7)
+      # greater_thresold = tf.cast(score > 0.5, tf.float32)
+      # indices = tf.cast(tf.boolean_mask(score ,dummy_indicator), tf.int64)
+      # tf.boolean_mask(score , score > 0.5)
 
 
-    top_antecedent_scores = tf.concat([dummy_scores, top_antecedent_scores], 1) # [k, k + 1]
+      # dummy_scores = tf.zeros([k, 1]) # [k, 1]
+      # top_antecedent_scores = tf.concat([dummy_scores, score], 1) # [k, k + 1]
+
+    # top_antecedent_scores = tf.concat([dummy_scores, top_antecedent_scores], 1) # [k, k + 1]
 
     top_antecedent_cluster_ids = tf.gather(top_span_cluster_ids, top_antecedents) # [k, k]
-    self.chikka = top_antecedent_cluster_ids
-
-    # top_antecedent_cluster_ids += tf.to_int32(tf.log(tf.to_float(top_antecedents_mask))) # [k, c]
-    same_cluster_indicator =  tf.logical_and(  tf.equal(top_antecedent_cluster_ids, tf.expand_dims(top_span_cluster_ids, 1)) , tf.equal(top_antecedent_cluster_ids!=  0))  # [k, c]
-    self.c
-    same_cluster_indicator =  tf.equal(top_antecedent_cluster_ids, tf.expand_dims(top_span_cluster_ids, 1)) # [k, c]
-    self.a = same_cluster_indicator
     
-    non_dummy_indicator = tf.expand_dims(top_span_cluster_ids > 0, 1) # [k, 1]
-    self.b = same_cluster_indicator
-
-    pairwise_labels = tf.logical_and(same_cluster_indicator, non_dummy_indicator) # [k, c]
-    self.d  = pairwise_labels
-
-    dummy_labels = tf.logical_not(tf.reduce_any(pairwise_labels, 1, keepdims=True)) # [k, 1]
-    self.e= dummy_labels
-
-    top_antecedent_labels = tf.concat([dummy_labels, pairwise_labels], 1) # [k, c + 1]
-    self.f  = top_antecedent_labels
-
-    loss = self.softmax_loss(top_antecedent_scores, top_antecedent_labels) # [k]
+    # top_antecedent_cluster_ids += tf.to_int32(tf.log(tf.to_float(top_antecedents_mask))) # [k, c]
+    same_cluster_indicator =  tf.logical_and(  tf.equal(top_antecedent_cluster_ids, tf.expand_dims(top_span_cluster_ids, 1)) , tf.not_equal(top_span_cluster_ids , 0) )  # [k, c]
+    labels = tf.to_float(same_cluster_indicator)
+    labels = tf.matrix_set_diag(labels, tf.ones(tf.shape(labels)[0]), name=None)
+    
+    loss = tf.nn.sigmoid_cross_entropy_with_logits(labels = labels , logits=score )
     loss = tf.reduce_sum(loss) # []
+
+    # dummy_indicator = tf.cast(tf.math.equal(top_span_cluster_ids, 0), tf.float32)
+    # indices = tf.cast(tf.boolean_mask(top_span_range,dummy_indicator), tf.int64)
+    # top_antecedent_labels = tf.concat([, score], 1) # [k, k + 1]
+    
+    # values= tf.cast(tf.ones(tf.shape(indices)), tf.int64)
+    # indices = tf.reshape(indices,  [-1,1])
+    # delta = tf.SparseTensor(indices, values , [k] )
+    # new_label = tf.sparse_tensor_to_dense(delta)
+    # top_antecedent_labels = tf.concat([new_label, score], 1) # [k, k + 1]
+    
+
+
+    # loss = self.softmax_loss(top_antecedent_scores, top_antecedent_labels) # [k]
+    # loss = tf.reduce_sum(loss) # []
 
     return [candidate_starts, candidate_ends, candidate_mention_scores, top_span_starts, top_span_ends, top_antecedents, top_antecedent_scores], loss
 
