@@ -13,3 +13,12 @@ Since Bert works in sequences, and original code is written using sentences as c
 For easier explanation of tensorflow code go to  https://stackoverflow.com/questions/34970582/using-a-variable-for-num-splits-for-tf-split/56015552#56015552 (my own answer)
 
 
+![Original Span Generation](https://github.com/ppriyank/Bert-Coref-Resolution-Lee-/blob/master/2.jpg)
+
+
+![Co-reference resolution](https://github.com/ppriyank/Bert-Coref-Resolution-Lee-/blob/master/1.jpg)
+
+
+![Multi-Tasking Appraoch](https://github.com/ppriyank/Bert-Coref-Resolution-Lee-/blob/master/3.png)
+
+
